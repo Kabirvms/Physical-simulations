@@ -16,14 +16,17 @@ class Person:
 
     def step(self, bounds, step_size):
         """Performs a single random walk step and impose boundary conditions on a rectangular room"""
-        angle = np.random.normal(0, 2 * np.pi)
-        print(angle)
+        std = 0.5 # The effective woobe of people (random walk would be 2 * np.pi) 
+
+        angle = np.random.normal(0,std) + self.direction
+        # Remove print statement to avoid console flooding
         new_x = self.position[0] + step_size * np.cos(angle)
         new_y = self.position[1] + step_size * np.sin(angle)
         
         # Apply boundary conditions
-        new_x = np.clip(new_x, bounds[0], bounds[1])
-        new_y = np.clip(new_y, bounds[0], bounds[1])
+
+        new_x = np.clip(new_x, 0, bounds[0])
+        new_y = np.clip(new_y, 0, bounds[1])
             
         self.position = np.array([new_x, new_y])
         return self.position
@@ -41,13 +44,13 @@ class Map:
             initially_infected (int): the number of people who are infected at the start    
         """
         self.bounds = bounds
-        self.num_people = int(people_density * abs(bounds[0] - bounds[1])**2)
+        self.num_people = 10
         self.no_infected = 0
         self.step_size = step_size
         self.all_people = []
-        self.personal_space = 1
+        self.personal_space = 2
         self.contagious_tracking = [[], []]
-        self.infection_range = 2
+        self.infection_range = 10
 
         # Generate people and assign initial infection status
         for all in range(self.num_people):
@@ -73,14 +76,14 @@ class Map:
             move ,proposed_updated_people = self.position_check(proposed_updated_people, self.personal_space,self.infection_range,index,proposed_step)
 
         #Updates the person's position and the list of people
-        self.all_people[index].person.position = proposed_step
+        self.all_people[index].position = proposed_step
         self.all_people[index].position_history[0].append(proposed_step[0])
         self.all_people[index].position_history[1].append(proposed_step[1])
         self.all_people = proposed_updated_people
         return self.all_people
 
         
-    def position_check(self,proposed_updated_people, exclusion_zone, infection_range,proposed_step,index):
+    def position_check(self, proposed_updated_people, exclusion_zone, infection_range, index, proposed_step):
         """Check if a proposed step is valid and update the list of people
            focusing on the social distancing and infection range"""
         
@@ -93,84 +96,102 @@ class Map:
                 pass
 
             # Checks social distancing
-            elif np.linalg.norm(proposed_updated_people[i] - proposed_step) < exclusion_zone:
-                return False
+            elif np.linalg.norm(proposed_updated_people[i].position - proposed_step) <= exclusion_zone:
+                return False, proposed_updated_people
             
             # Check if the proposed step infects another person
             # Then gives a temp asign incase its not a vailed position with socal distancing
-            elif np.linalg.norm(proposed_updated_people[i] - proposed_step) < infection_range:
+            elif np.linalg.norm(proposed_updated_people[i].position - proposed_step) <= infection_range:
                 proposed_updated_people[i].is_infected = True
         return True, proposed_updated_people
     
 
 class Simulation:
-    def __init__(self, bounds, people_density, step_size=1, probably_infected=0.01,time=1000):
-        """Initializes the map and the simulation"""
+    def __init__(self, bounds, people_density, step_size=1, probably_infected=0.01, time=1000):
         self.map = Map(bounds, people_density, step_size, probably_infected)
-        self.time = 500
-
+        self.time = time
+        self.ani = None  # Store animation reference
         
         # Create figure and visualization elements
         self.fig, self.ax = plt.subplots(figsize=(10, 8))
-        self.ax.set_xlim(bounds[0], bounds[1])
-        self.ax.set_ylim(bounds[0], bounds[1])
-        # Create visualization elements
-        self.scatter_all = self.ax.scatter(map.all_people[0],map.all_people[1], c='green', alpha=0.5, s=10, label='Healthy')
+        self.ax.set_xlim(0, bounds[0])
+        self.ax.set_ylim(0, bounds[1])
+        
+        # Initialize empty plots
+        self.scatter_healthy = self.ax.scatter([], [], c='green', alpha=0.5, s=10, label='Healthy')
         self.scatter_infected = self.ax.scatter([], [], c='blue', alpha=0.8, s=15, label='Infected')
         self.scatter_contagious = self.ax.scatter([], [], c='red', alpha=1, s=25, label='Contagious')
-        self.lines_path_of_contagious, = self.ax.plot([], [], c='orange', alpha=0.1, label='Path of Contagious')
-     
+        self.lines_path_of_contagious, = self.ax.plot([], [], c='orange', alpha=0.3, linewidth=1, label='Path of Contagious')
         
-        # Add labels and grid
-        plt.xlabel('X Primary axis of travel')
-        plt.ylabel('Y Secondary axis of travel')
-        plt.title('Simulation of Covid-19 in a corridor')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-    
-        # Set up the animation
-        self.ani = animation.FuncAnimation(self.fig, self.update, frames=time, init_func=self.init_animation, blit=True, interval=50, repeat=False)
-            
-    def init_animation(self):
-        """Initialize the animation"""
-        # Initialize with empty positions
-        all_positions = np.array([[person.position[0], person.position[1]] for person in self.map.all_people])
-        self.scatter_all.set_offsets(all_positions)
-        self.scatter_infected.set_offsets(np.empty((0, 2)))
-        self.scatter_contagious.set_offsets(np.empty((0, 2)))
-        self.lines_path_of_contagious.set_data([], [])
-        return self.scatter_all, self.scatter_infected, self.scatter_contagious, self.lines_path_of_contagious
-    
-    def update(self, frame):
-        """Update the simulation for each animation frame
-        
-        Args:
-            frame: Frame number (required by FuncAnimation but not used in this function)
-        """
-        # Using frame parameter (commenting to avoid linter warnings)
-        # frame is required by FuncAnimation but not used here
-        # Move all people and check for new infections
-        for i in range(len(self.map.all_people)):
-            # Call move once per person instead of twice
-            self.map.move(i)
-            
-        # Update the scatter plots
-        all_positions = np.array([[person.position[0], person.position[1]] for person in self.map.all_people])
-        infected_positions = np.array([[person.position[0], person.position[1]] for person in self.map.all_people if person.is_infected])
-        contagious_positions = np.array([[person.position[0], person.position[1]] for person in self.map.all_people if person.contagious])
-        
-        self.scatter_all.set_offsets(all_positions)
-        self.scatter_infected.set_offsets(infected_positions)
-        self.scatter_contagious.set_offsets(contagious_positions)
-        
-        return self.scatter_all, self.scatter_infected, self.scatter_contagious, self.lines_path_of_contagious
-          
-        
-    def run(self):
-        """Run the simulation"""
-        plt.show()
+        # Add legend
+        self.ax.legend(loc='upper right')
+        self.ax.set_title('COVID-19 Spread Simulation')
+        self.ax.set_xlabel('Position (m)')
+        self.ax.set_ylabel('Position (m)')
 
-# Create and run the simulation
+    def animate(self, frame):
+        """Animation function called for each frame"""
+        # Move all people for this frame
+        all_people = []
+
+        #for i in range(len(self.map.all_people)):
+        self.map.move(frame)
+        
+        # Separate people by their status
+        healthy_x, healthy_y = [], []
+        infected_x, infected_y = [], []
+        contagious_x, contagious_y = [], []
+        
+        # Track paths of contagious people
+        path_x, path_y = [], []
+        
+        for person in self.map.all_people:
+            if person.contagious:
+                contagious_x.append(person.position[0])
+                contagious_y.append(person.position[1])
+                # Add path history for contagious people
+                path_x.extend(person.position_history[0])
+                path_y.extend(person.position_history[1])
+                path_x.append(None)  # Add None to separate different people's paths
+                path_y.append(None)
+            elif person.is_infected:
+                infected_x.append(person.position[0])
+                infected_y.append(person.position[1])
+            else:
+                healthy_x.append(person.position[0])
+                healthy_y.append(person.position[1])
+        
+        # Update scatter plots
+        self.scatter_healthy.set_offsets(np.column_stack((healthy_x, healthy_y)) if healthy_x else np.empty((0, 2)))
+        self.scatter_infected.set_offsets(np.column_stack((infected_x, infected_y)) if infected_x else np.empty((0, 2)))
+        self.scatter_contagious.set_offsets(np.column_stack((contagious_x, contagious_y)) if contagious_x else np.empty((0, 2)))
+        
+        # Update path lines
+        self.lines_path_of_contagious.set_data(path_x, path_y)
+        
+        # Add info text with current statistics
+        info_text = f"Frame: {frame}\nHealthy: {len(healthy_x)}\nInfected: {len(infected_x)}\nContagious: {len(contagious_x)}"
+        if hasattr(self, 'text_info'):
+            self.text_info.set_text(info_text)
+        else:
+            self.text_info = self.ax.text(0.02, 0.95, info_text, transform=self.ax.transAxes, 
+                                         bbox=dict(facecolor='white', alpha=0.7))
+        
+        return [self.scatter_healthy, self.scatter_infected, self.scatter_contagious, 
+                self.lines_path_of_contagious, self.text_info]
+    def run(self):
+        """Run the simulation animation"""
+        self.ani = animation.FuncAnimation(
+            self.fig, self.animate, frames=self.time,
+            interval=500, blit=False, repeat=False
+        )
+        plt.show()
+        return self.ani
+
+
+
 if __name__ == "__main__":
-    sim = Simulation((-50, 50),0.1,1,1000)
-    sim.run()
+    # Run simulation with a 50x50 meter area
+    bounds = [100, 5]
+    sim = Simulation(bounds, number_of_people= 10, step_size=1.2, probably_infected=0.)
+    ani = sim.run()
