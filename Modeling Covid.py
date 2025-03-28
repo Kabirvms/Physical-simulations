@@ -2,37 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-class Person:
-    def __init__(self, position, contagious, step_size):
-        """Initializes a person with a position, infection status, and step size"""
-        self.position = position
-        self.contagious = contagious
-        self.step_size = step_size
-        self.direction = np.random.choice([0, np.pi])
-        self.is_infected = contagious
-        self.position_history = [[], []]
-        self.position_history[0].append(position[0])
-        self.position_history[1].append(position[1])
-
-    def step(self, bounds, step_size):
-        """Performs a single random walk step and impose boundary conditions on a rectangular room"""
-        std = 0.5 # The effective woobe of people (random walk would be 2 * np.pi) 
-
-        angle = np.random.normal(0,std) + self.direction
-        # Remove print statement to avoid console flooding
-        new_x = self.position[0] + step_size * np.cos(angle)
-        new_y = self.position[1] + step_size * np.sin(angle)
-        
-        # Apply boundary conditions
-
-        new_x = np.clip(new_x, 0, bounds[0])
-        new_y = np.clip(new_y, 0, bounds[1])
-            
-        self.position = np.array([new_x, new_y])
-        return self.position
 
 class Map:
-    def __init__(self, bounds, people_density, step_size, probably_infected):
+    def __init__(self, bounds, initial_people, false_positive_rate):
         """initialise the environment with the people and defines infected, contagious and healthy people. Note for simplicity assume standard units
         Distance is in meters
         Time is in seconds
@@ -44,72 +16,134 @@ class Map:
             initially_infected (int): the number of people who are infected at the start    
         """
         self.bounds = bounds
-        self.num_people = 10
-        self.no_infected = 0
-        self.step_size = step_size
-        self.all_people = []
+        self.total_number_of_people = 0
+        self.false_positive_rate = false_positive_rate
+        self.total_infected = 0
+        self.total_contagious = 0
+        self.all_people = np.empty((initial_people), dtype=object)
         self.personal_space = 2
         self.contagious_tracking = [[], []]
-        self.infection_range = 10
+        self.infection_range = 5
+        self.infection_probability = 0.3
+        for i in range(initial_people):
+            person = self.person_gen(false_positive_rate)
+            print(f"Person {i}: Position: {person.position}, Contagious: {person.contagious}")
+            self.all_people[i] = person
 
-        # Generate people and assign initial infection status
-        for all in range(self.num_people):
-            pos = np.random.uniform(bounds[0], bounds[1], 2)
-            step_size = np.random.uniform(5,1.5,10)
-            if np.random.random(1) < probably_infected:
-                # Create a person and add to the infected and contagious list
-                person = Person(pos,True, step_size)
-            else:
-                # Creates a healthy person 
-                person = Person(pos,False, step_size)
-            self.all_people.append(person)
+    def person_gen(self, false_positive_rate):
+        """Generates people with random positions and step sizes"""
+        if np.random.random() < 0.5:
+            x = 0
+            theta = 0
+        else:
+            x = self.bounds[0]
+            theta = np.pi
+    
+        y = np.random.uniform(0,self.bounds[1])
+        pos = np.array([x, y])
+
+        if np.random.random() < false_positive_rate:
+            # Create a person and add to the infected and contagious list
+            person = Person(pos,True)
+            self.total_infected += 1
+            self.total_contagious += 1
+            self.total_number_of_people += 1
+        else:
+            # Creates a healthy person 
+            self.total_number_of_people += 1
+            person = Person(pos,False)
+        print("person direction", person.direction)
+        person.direction = theta
+        return person
+        
       
-        
     def move(self, index):
-        #initialise move validation
+        # Initialize move validation
         move = False
-        
-        #Creates a vaild step for person at index
-        proposed_updated_people = self.all_people.copy()
-        while move == False:
-            proposed_step = proposed_updated_people[index].step(self.bounds, self.step_size)
-            move ,proposed_updated_people = self.position_check(proposed_updated_people, self.personal_space,self.infection_range,index,proposed_step)
-
-        #Updates the person's position and the list of people
-        self.all_people[index].position = proposed_step
-        self.all_people[index].position_history[0].append(proposed_step[0])
-        self.all_people[index].position_history[1].append(proposed_step[1])
-        self.all_people = proposed_updated_people
+        apc = self.all_people.copy()
+        # Try to move the person
+        proposed_step = apc[index].step(self.bounds, apc[index].step_size)
+        if proposed_step is None:
+            apc[index] = self.person_gen(self.false_positive_rate)
+            self.all_people = apc
+            return self.all_people
+        else:
+            if apc[index].contagious == False:
+                move = True
+            move, apc = self.position_check(apc, self.personal_space, self.infection_range, index, proposed_step)
+            # Create a new person (non-contagious by default to balane
+            while move == False:
+                proposed_step = apc[index].step(self.bounds, apc[index].step_size)
+                move, apc = self.position_check(apc, self.personal_space, self.infection_range, index, proposed_step)
+        apc[index].position = proposed_step
+        self.all_people = apc
         return self.all_people
 
         
-    def position_check(self, proposed_updated_people, exclusion_zone, infection_range, index, proposed_step):
+    def position_check(self, people_list, exclusion_zone, infection_range, index, proposed_step):
         """Check if a proposed step is valid and update the list of people
            focusing on the social distancing and infection range"""
         
         # Check if the proposed step is within the bounds
         #also point to add in social distancing
 
-        for i in range(len(proposed_updated_people)):
+        for i in range(len(people_list)):
             #checks if comparing to self
             if i == index:
-                pass
+                continue
+            else:
+                # Then gives a temp asign incase its not a vailed position with socal 
+                distance = np.linalg.norm(people_list[i].position - proposed_step)
+                if distance <= infection_range:
+                    if self.people_list[index].contagious == True:
+                        # Check if the distance is less than the exclusion zone
+                        if distance <= exclusion_zone:
+                            return False, people_list
+                        else:
+                            if np.random.random() <self.infection_probability:
+                                people_list[i].is_infected = True
+                                self.total_infected += 1
+                                # Update the total number of people
 
-            # Checks social distancing
-            elif np.linalg.norm(proposed_updated_people[i].position - proposed_step) <= exclusion_zone:
-                return False, proposed_updated_people
-            
-            # Check if the proposed step infects another person
-            # Then gives a temp asign incase its not a vailed position with socal distancing
-            elif np.linalg.norm(proposed_updated_people[i].position - proposed_step) <= infection_range:
-                proposed_updated_people[i].is_infected = True
-        return True, proposed_updated_people
+                else:
+                    pass
+
+        return True, people_list
+    
+class Person:
+    def __init__(self, position, contagious):
+        """Initializes a person with a position, infection status, and step size"""
+        step_size = np.random.uniform(1.0, 1.5)
+        self.position = position
+        self.contagious = contagious
+        self.step_size = step_size
+        self.direction = 0
+        self.is_infected = contagious
+        self.position_history = [[], []]
+
+    def step(self, bounds, step_size):
+        """Performs a single random walk step and impose boundary conditions on a rectangular room"""
+        std = 0.1 # The effective woobe of people (random walk would be 2 * np.pi) 
+        angle = np.random.normal(0,std) + self.direction
+        new_x = self.position[0] + step_size * np.cos(angle)
+        new_y = self.position[1] + step_size * np.sin(angle)
+        
+        # Check if the person would go out of bounds
+        if new_x < 0 or new_x > bounds[0] or new_y < 0 or new_y > bounds[1]:
+            # Person is leaving the area - signal this with None
+            position = None
+        else:
+            # Person stays in bounds
+            position = np.array([new_x, new_y])
+        return position
     
 
+
 class Simulation:
-    def __init__(self, bounds, people_density, step_size=1, probably_infected=0.01, time=1000):
-        self.map = Map(bounds, people_density, step_size, probably_infected)
+    def __init__(self, bounds, number_of_people, probably_infected=0.01, time=10):
+        self.map = Map(bounds, number_of_people, probably_infected)
         self.time = time
+        self.count_of_people  = number_of_people
         self.ani = None  # Store animation reference
         
         # Create figure and visualization elements
@@ -134,8 +168,8 @@ class Simulation:
         # Move all people for this frame
         all_people = []
 
-        #for i in range(len(self.map.all_people)):
-        self.map.move(frame)
+        for i in range(len(self.map.all_people)):
+            self.map.move(i)
         
         # Separate people by their status
         healthy_x, healthy_y = [], []
@@ -183,7 +217,7 @@ class Simulation:
         """Run the simulation animation"""
         self.ani = animation.FuncAnimation(
             self.fig, self.animate, frames=self.time,
-            interval=500, blit=False, repeat=False
+            interval=800, blit=False, repeat=False
         )
         plt.show()
         return self.ani
@@ -192,6 +226,6 @@ class Simulation:
 
 if __name__ == "__main__":
     # Run simulation with a 50x50 meter area
-    bounds = [100, 5]
-    sim = Simulation(bounds, number_of_people= 10, step_size=1.2, probably_infected=0.)
+    bounds = [150, 5]
+    sim = Simulation(bounds, number_of_people= 10, probably_infected=0.3)
     ani = sim.run()
