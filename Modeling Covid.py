@@ -234,7 +234,7 @@ class Simulation:
         return self.ani
 
 class Comparison:
-    def __init__(self, bounds, upper_bound_people, probably_infected=0.01, time_per_simulation=10000, max_social_distancing=3):
+    def __init__(self, bounds, upper_bound_people, probably_infected=0.5, time_per_simulation=1000, max_social_distancing=3):
         """
         Initialize a comparison simulation with varying population sizes and social distancing values.
         
