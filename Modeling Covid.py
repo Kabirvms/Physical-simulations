@@ -87,8 +87,8 @@ class Map:
                 else:
                     move, apc = self.position_check(apc, self.personal_space, index, proposed_step)
                     apc[index].position = proposed_step
-                    if emergency_stop > 5:
-                        print("Emergency stop triggered for person", index)
+                    if emergency_stop > 3:
+                        print("waited", index)
                         self.flows_stop += 1
                         apc = self.all_people.copy() #resets the apc temporarily
                         break
@@ -234,7 +234,7 @@ class Simulation:
         return self.ani
 
 class Comparison:
-    def __init__(self, bounds, upper_bound_people, probably_infected=0.5, time_per_simulation=1000, max_social_distancing=3):
+    def __init__(self, bounds, upper_bound_people, upper_bound_social_distancing, time_per_sim, contagious_rate=0.5):
         """
         Initialize a comparison simulation with varying population sizes and social distancing values.
         
@@ -245,37 +245,34 @@ class Comparison:
         - time_per_simulation: Time steps for each simulation
         - max_social_distancing: Maximum social distancing value to test
         """
-        self.bounds = bounds
-        self.upper_bound_people = upper_bound_people
-        self.probably_infected = probably_infected
-        self.time_per_simulation = time_per_simulation
-        self.max_social_distancing = max_social_distancing
+        self.bounds = bounds #sets the bounds of the simulation where bounds are [x_max,y_max]
+        self.upper_bound_people = upper_bound_people #sets the upper bound of number of people 
+        self.contagious_rate = contagious_rate #sets the rate of contagious people
+        self.time_per_simulation = time_per_sim #sets the time of each simulation
+        self.max_social_distancing = upper_bound_social_distancing #sets the upper bound for social distancing
         self.results = []
         
     def run_comparison(self):
         """Run multiple simulations with varying numbers of people and social distancing values."""
-        # Vary social distancing from 0.1 to max value in increments of 0.1
+        # Loop through different social distancing values
         for social_dist in np.arange(0.1, self.max_social_distancing + 0.1, 0.1):
-            social_dist = round(social_dist, 1)  # Round to avoid floating point issues
+            social_dist = round(social_dist, 1)  
             print(f"\nTesting social distancing: {social_dist}")
-            
-            # Start with 10 people and increase by 10 until upper bound
+            # Loop through different numbers of people in the station
             for num_people in range(10, self.upper_bound_people + 1, 10):
                 print(f"Running simulation with {num_people} people, social distancing: {social_dist}...")
-                
-                # Create map directly to avoid animation setup
-                map_obj = Map(self.bounds, num_people, self.probably_infected)
-                map_obj.personal_space = social_dist  # Set the social distancing parameter
-                
-                # Run for specified time steps
+
+                map_obj = Map(self.bounds, num_people, self.contagious_rate)
+                map_obj.personal_space = social_dist  
+                #the board move sequance
                 for _ in range(self.time_per_simulation):
                     for i in range(len(map_obj.all_people)):
                         map_obj.move(i)
-                
-                # Calculate infection rate and store results
+
+                # Calculate infection rate
                 infection_rate = (map_obj.total_infected / map_obj.total_number_of_people) * 100
-                
-                # Store detailed results
+
+                #update studnent household manger to use this 'storage technique
                 result = {
                     'social_distancing': social_dist,
                     'num_people': num_people,
@@ -285,75 +282,70 @@ class Comparison:
                     'infection_rate': infection_rate,
                     'flows_stopped': map_obj.flows_stop
                 }
+
+                #stores the results 
                 self.results.append(result)
             
         return self.results
     
+
     def save_results_to_excel(self, filename="simulation_results.xlsx"):
         """Save the results to an Excel file with initial conditions on a separate sheet."""
+        # Check if results are available
         if not self.results:
             print("No results to save. Run the comparison first.")
             return
-        
-        # Convert results to a DataFrame
+        # Create a DataFrame with intial and input conditions
         results_df = pd.DataFrame(self.results)
-        
-        # Create a DataFrame for initial conditions
+
         initial_conditions = {
             "Bounds": [self.bounds],
             "Upper Bound People": [self.upper_bound_people],
-            "Probably Infected": [self.probably_infected],
+            "Contagious Rate": [self.contagious_rate],
             "Time Per Simulation": [self.time_per_simulation],
             "Max Social Distancing": [self.max_social_distancing]
         }
         initial_conditions_df = pd.DataFrame(initial_conditions)
+
         
-        # Write to Excel
+        # Save to Excel file with two sheets
         with pd.ExcelWriter(filename) as writer:
-            initial_conditions_df.to_excel(writer, sheet_name="Initial Conditions", index=False)
+            initial_conditions_df.to_excel(writer, sheet_name="p_max{self.upper_bound_people}_sd_max{self.upper_bound_social_distancing}_smr{self.time_per_sim}", index=False)
             results_df.to_excel(writer, sheet_name="Results", index=False)
         
         print(f"Results saved to {filename}")
     
     def plot_infection_rates(self):
         """Plot infection rates against number of people with trendlines for each social distancing value."""
+        # Check if results are available
         if not self.results:
             print("No results to plot. Run the comparison first.")
             return
-        
-        # Convert results to a DataFrame
+
         results_df = pd.DataFrame(self.results)
-        
-        # Create a figure
+
         plt.figure(figsize=(12, 8))
-        
-        # Get unique social distancing values
+
         social_dist_values = sorted(results_df['social_distancing'].unique())
-        
-        # Define a color map
+        # Create a color map for different social distancing values
         colors = plt.cm.viridis(np.linspace(0, 1, len(social_dist_values)))
-        
-        # Plot data points for each social distancing value
+        # Plot infection rates for each social distancing value
         for i, sd in enumerate(social_dist_values):
-            # Filter data for this social distancing value
-            sd_data = results_df[results_df['social_distancing'] == sd]
             
-            # Plot scatter points
+            sd_data = results_df[results_df['social_distancing'] == sd]
+
             plt.plot(sd_data['num_people'], sd_data['infection_rate'], 
                    color=colors[i], alpha=0.7, label=f'SD = {sd}m')
-        
-        # Add labels and title
+
         plt.xlabel('Number of People')
         plt.ylabel('Infection Rate (%)')
-        plt.title('Infection Rate vs. Number of People for Different Social Distancing Values')
+        plt.title('Effect of Social Distancing and population size for a prevalence of: {contagious_rate}')
         plt.legend(title='Social Distancing', loc='best')
         plt.grid(True, alpha=0.3)
-        
-        # Save the figure
+
         plt.savefig('infection_rate_analysis.png', dpi=300, bbox_inches='tight')
         print("Plot saved as 'infection_rate_analysis.png'")
-        
-        # Show the plot
+
         plt.show()
     
     def run_full_comparison(self):
@@ -362,8 +354,6 @@ class Comparison:
         self.save_results_to_excel()
         self.plot_infection_rates()
 
-
 if __name__ == "__main__":
-    comparison = Comparison((100, 5), 100)
+    comparison = Comparison((240, 5) ,20, 3, 10)
     comparison.run_full_comparison()
-  
