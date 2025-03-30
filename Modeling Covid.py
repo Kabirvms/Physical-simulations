@@ -7,6 +7,10 @@ import sys
 sys.setrecursionlimit(1000000)  # Set the recursion limit to 10,000
 import pandas as pd
 
+import sys
+sys.setrecursionlimit(1000000)  # Set the recursion limit to 10,000
+import pandas as pd
+
 
 class Map:
     def __init__(self, bounds, initial_people, false_positive_rate):
@@ -58,6 +62,7 @@ class Map:
         else:
             person = Person(pos,False)
             self.total_number_of_people += 1
+            self.total_number_of_people += 1
         person.direction = theta
 
         if self.vac_num_mask_num_combined_num != None:
@@ -80,6 +85,7 @@ class Map:
         move = False
         apc = self.all_people.copy() #creates a copy of the people in the simulation
         emergency_stop = 0
+        emergency_stop = 0
         
         #creates a proposed step for the person at index i in current people (all_people)
         proposed_step = apc[index].step(self.bounds, apc[index].step_size)
@@ -91,6 +97,11 @@ class Map:
             return self.all_people
         else:
             #Checks if they are contagious (to determine if more computations are required)
+            #If not contagious then we can just move them
+            move = True
+            move, apc = self.position_check(apc, self.personal_space, index, proposed_step)
+            apc[index].position = proposed_step
+           #if they are contagious then we need to check if they are going to infect anyone and now inforces social distancing
             #If not contagious then we can just move them
             move = True
             move, apc = self.position_check(apc, self.personal_space, index, proposed_step)
@@ -115,6 +126,7 @@ class Map:
         return self.all_people
 
     def position_check(self, people_list, exclusion_zone, index, proposed_step):
+    def position_check(self, people_list, exclusion_zone, index, proposed_step):
         """Check if a proposed step is valid and update the list of people
            focusing on the social distancing and infection range"""
         # Check if self comparison
@@ -128,7 +140,14 @@ class Map:
                     # checks if the distance is less than the infection range
                     if distance <= 4:
                         # checks if the person is contagious and if they are within the exclusion zone (social distancing)
+                if people_list[index].contagious or people_list[i].contagious:
+                    # computes the distance to all other people in the simulation
+                    distance = np.linalg.norm(people_list[i].position - proposed_step)    
+                    # checks if the distance is less than the infection range
+                    if distance <= 4:
+                        # checks if the person is contagious and if they are within the exclusion zone (social distancing)
                         if distance <= exclusion_zone:
+                            # If they are contagious and within the exclusion zone then we cannot move
                             # If they are contagious and within the exclusion zone then we cannot move
                             return False, people_list
                         else: 
@@ -170,6 +189,7 @@ class Person:
         #checks if the move is valid
         if new_x < 0 or new_x > bounds[0] or new_y < 0 or new_y > bounds[1]:
 
+
             position = None
         else:
             
@@ -206,6 +226,7 @@ class Simulation:
 
     def animate(self, frame):
         print("frame", frame)
+        print("frame", frame)
         """Animation function called for each frame"""
         # Move all people
         for i in range(len(self.map.all_people)):
@@ -236,13 +257,18 @@ class Simulation:
         # Update statistics
         total_people = self.map.total_number_of_people
         percent_infected = round((self.map.total_infected / self.map.total_number_of_people) * 100,2)
+        total_people = self.map.total_number_of_people
+        percent_infected = round((self.map.total_infected / self.map.total_number_of_people) * 100,2)
     
         stats_text = (f"Total people: {total_people}\n"
+                      f"Total healthy: {total_people - self.map.total_infected}\n"
                       f"Total healthy: {total_people - self.map.total_infected}\n"
                       f"Total infected: {self.map.total_infected}\n"
                       f"Contagious: {self.map.total_contagious}\n"
                       f"Infection rate: {percent_infected}%")
+                      f"Infection rate: {percent_infected}%")
         self.text_info.set_text(stats_text)
+        return [self.scatter_healthy, self.scatter_infected, self.scatter_contagious, self.text_info]
         return [self.scatter_healthy, self.scatter_infected, self.scatter_contagious, self.text_info]
 
                 
