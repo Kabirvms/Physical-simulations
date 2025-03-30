@@ -7,9 +7,6 @@ import sys
 sys.setrecursionlimit(1000000)  # Set the recursion limit to 10,000
 import pandas as pd
 
-import sys
-sys.setrecursionlimit(1000000)  # Set the recursion limit to 10,000
-import pandas as pd
 
 
 class Map:
@@ -65,6 +62,7 @@ class Map:
             self.total_number_of_people += 1
         person.direction = theta
 
+        #new simple mask and vacine handling 
         if self.vac_num_mask_num_combined_num != None:
             if np.random.random() < self.vac_num_mask_num_combined_num:
                 person.infection_probability_plus_2 = self.vacination_infection_para[1]
@@ -126,7 +124,6 @@ class Map:
         return self.all_people
 
     def position_check(self, people_list, exclusion_zone, index, proposed_step):
-    def position_check(self, people_list, exclusion_zone, index, proposed_step):
         """Check if a proposed step is valid and update the list of people
            focusing on the social distancing and infection range"""
         # Check if self comparison
@@ -134,12 +131,6 @@ class Map:
             if i == index:
                 continue
             else:
-                if people_list[index].contagious or people_list[i].contagious:
-                    # computes the distance to all other people in the simulation
-                    distance = np.linalg.norm(people_list[i].position - proposed_step)    
-                    # checks if the distance is less than the infection range
-                    if distance <= 4:
-                        # checks if the person is contagious and if they are within the exclusion zone (social distancing)
                 if people_list[index].contagious or people_list[i].contagious:
                     # computes the distance to all other people in the simulation
                     distance = np.linalg.norm(people_list[i].position - proposed_step)    
@@ -168,7 +159,7 @@ class Map:
         return True, people_list
     
 class Person:
-    def __init__(self, position, contagious,infection_probability_plus_2=0.013,infection_probability_sub_2=0.13):
+    def __init__(self, position, contagious):
         """Initializes a person with a position, infection status, and step size"""
         self.position = position
         self.contagious = contagious
@@ -266,9 +257,7 @@ class Simulation:
                       f"Total infected: {self.map.total_infected}\n"
                       f"Contagious: {self.map.total_contagious}\n"
                       f"Infection rate: {percent_infected}%")
-                      f"Infection rate: {percent_infected}%")
         self.text_info.set_text(stats_text)
-        return [self.scatter_healthy, self.scatter_infected, self.scatter_contagious, self.text_info]
         return [self.scatter_healthy, self.scatter_infected, self.scatter_contagious, self.text_info]
 
                 
@@ -426,7 +415,7 @@ if __name__ == "__main__":
     #Example usage
     run = Simulation()
     run.time_per_simulation = 1000 #sets the time of each simulation
-    run.bounds = (240, 5) #sets the bounds of the simulation where bounds are [x_max,y_max] in meters
+    run.bounds = [240, 5] #sets the bounds of the simulation where bounds are [x_max,y_max] in meters
     run.contagious_rate = 0.01 #sets the rate of contagious people in the simulation
 
    
