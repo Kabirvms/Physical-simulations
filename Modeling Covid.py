@@ -1,20 +1,29 @@
 import numpy as np
+import matplotlib
+matplotlib.rcParams['animation.embed_limit'] = 10000000
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import sys
+sys.setrecursionlimit(1000000)  # Set the recursion limit to 10,000
+import pandas as pd
+
 
 class Map:
     def __init__(self, bounds, initial_people, false_positive_rate):
         """Initialises the map with a defined area, number of people, and false positive rate"""
         self.bounds = bounds #sets boundaries of the map note its from [0,0] to [bounds[0], bounds[1]]
-        self.total_number_of_people = 0 # counts the total number of people simulated
         self.false_positive_rate = false_positive_rate #rate of intially infected within the population
+
+        self.total_number_of_people = 0 # counts the total number of people simulated
         self.total_infected = 0 #counts the total number of infected people
         self.total_contagious = 0 #counts the total number of contagious people (to be contagious) you must be infected prior to arrival at the train station
+        
         self.all_people = np.empty((initial_people), dtype=object) #stores the people objects currently in the simulation
-        self.personal_space = 2 #sets the personal space (social distancing) of the people
+        self.personal_space = 0 #sets the personal space (social distancing) of the people
         self.contagious_tracking = [[], []] #tracks the position of contagious people
-        self.infection_range = 5 #sets the range the infection can spread over
-        self.infection_probability = 0.3 #given that you are in the range computes the probability of infection
+        self.infection_probability_plus_2 = 0.013 #sets the range the infection can spread over
+        self.infection_probability_sub_2 = 0.13 #given that you are in the range computes the probability of infection
+        self.flows_stop = 0 #The number of times the flow of contagious people has to be stopped to maintain social distancing
 
         ## Generate initial people
         for i in range(initial_people):
@@ -42,6 +51,7 @@ class Map:
             self.total_number_of_people += 1
         else:
             person = Person(pos,False)
+            self.total_number_of_people += 1
         person.direction = theta
 
         # Returns a peron object
@@ -49,10 +59,10 @@ class Map:
 
     def move(self, index):
         """Moves a person in the simulation and checks for infection spread"""
-
         #Initialise the move variable to false
         move = False
         apc = self.all_people.copy() #creates a copy of the people in the simulation
+        emergency_stop = 0
         
         #creates a proposed step for the person at index i in current people (all_people)
         proposed_step = apc[index].step(self.bounds, apc[index].step_size)
@@ -64,20 +74,30 @@ class Map:
             return self.all_people
         else:
             #Checks if they are contagious (to determine if more computations are required)
-            if apc[index].contagious == False:
-                #If not contagious then we can just move them
-                move = True
-                move, apc = self.position_check(apc, self.personal_space, self.infection_range, index, proposed_step)
-            #if they are contagious then we need to check if they are going to infect anyone and now inforces social distancing
+            #If not contagious then we can just move them
+            move = True
+            move, apc = self.position_check(apc, self.personal_space, index, proposed_step)
+            apc[index].position = proposed_step
+           #if they are contagious then we need to check if they are going to infect anyone and now inforces social distancing
             while move == False:
                 proposed_step = apc[index].step(self.bounds, apc[index].step_size)
-                move, apc = self.position_check(apc, self.personal_space, self.infection_range, index, proposed_step)
+                if proposed_step is None:
+                    #If required generates a new person
+                    apc[index] = self.person_gen(self.false_positive_rate)
+                else:
+                    move, apc = self.position_check(apc, self.personal_space, index, proposed_step)
+                    apc[index].position = proposed_step
+                    if emergency_stop > 5:
+                        print("Emergency stop triggered for person", index)
+                        self.flows_stop += 1
+                        apc = self.all_people.copy() #resets the apc temporarily
+                        break
+                    emergency_stop += 1
         #returns the new position of the person with updated infection status if required
-        apc[index].position = proposed_step
         self.all_people = apc
         return self.all_people
 
-    def position_check(self, people_list, exclusion_zone, infection_range, index, proposed_step):
+    def position_check(self, people_list, exclusion_zone, index, proposed_step):
         """Check if a proposed step is valid and update the list of people
            focusing on the social distancing and infection range"""
         # Check if self comparison
@@ -85,24 +105,30 @@ class Map:
             if i == index:
                 continue
             else:
-                # computes the distance to all other people in the simulation
-                distance = np.linalg.norm(people_list[i].position - proposed_step)
-                # checks if the distance is less than the infection range
-                if distance <= infection_range:
-                    # checks if the person is contagious and if they are within the exclusion zone (social distancing)
-                    if people_list[index].contagious == True:
-                        # If they are within social distancing the move is not valid assumption strickt social distancing
+                if people_list[index].contagious or people_list[i].contagious:
+                    # computes the distance to all other people in the simulation
+                    distance = np.linalg.norm(people_list[i].position - proposed_step)    
+                    # checks if the distance is less than the infection range
+                    if distance <= 4:
+                        # checks if the person is contagious and if they are within the exclusion zone (social distancing)
                         if distance <= exclusion_zone:
+                            # If they are contagious and within the exclusion zone then we cannot move
                             return False, people_list
-                        else:
-                            # If they are not within social distancing then we can infect them
-                            if np.random.random() <self.infection_probability:
-                                people_list[i].is_infected = True
-                                self.total_infected += 1
-
-                else:
-                    pass
-
+                        else: 
+                            contagious = people_list[index]
+                            healthy = people_list[i]
+                            if contagious.direction == 0 and healthy.position[0]>contagious.position[0] or contagious.direction == np.pi and healthy.position[0]<contagious.position[0]:
+                                if distance > 2:
+                                    #checks if the distance is greater than 2
+                                    if np.random.random() < self.infection_probability_plus_2:
+                                        if people_list[i].is_infected == False:
+                                            self.total_infected += 1
+                                        people_list[i].is_infected = True
+                                    #checks if the distance is less than 2
+                                    elif np.random.random() < self.infection_probability_sub_2:
+                                        if people_list[i].is_infected == False:
+                                            self.total_infected += 1
+                                        people_list[i].is_infected = True                
         return True, people_list
     
 class Person:
@@ -114,7 +140,6 @@ class Person:
         self.step_size = step_size
         self.direction = 0 #this property is updated by map 
         self.is_infected = contagious
-        self.position_history = [[], []]
 
     def step(self, bounds, step_size):
         """Performs a single random walk step and impose boundary conditions on a rectangular room"""
@@ -125,7 +150,7 @@ class Person:
 
         #checks if the move is valid
         if new_x < 0 or new_x > bounds[0] or new_y < 0 or new_y > bounds[1]:
-            
+
             position = None
         else:
             
@@ -133,13 +158,13 @@ class Person:
         return position
 
 class Simulation:
-    def __init__(self, bounds, number_of_people, probably_infected=0.01, time=100):
+    def __init__(self, bounds, number_of_people, probably_infected=0.01, time=1000):
         """Sets up the simulation with the map, number of people, and time"""
         self.map = Map(bounds, number_of_people, probably_infected)
         self.time = time
 
         # Initialize the plot
-        self.fig, self.ax = plt.subplots(figsize=(10, 8))
+        self.fig, self.ax = plt.subplots(figsize=(30, 8))
         self.ax.set_xlim(0, bounds[0])
         self.ax.set_ylim(0, bounds[1])
 
@@ -147,7 +172,6 @@ class Simulation:
         self.scatter_healthy = self.ax.scatter([], [], c='green', alpha=0.5, s=10, label='Healthy')
         self.scatter_infected = self.ax.scatter([], [], c='blue', alpha=0.8, s=15, label='Infected')
         self.scatter_contagious = self.ax.scatter([], [], c='red', alpha=1, s=25, label='Contagious')
-        self.lines_path_of_contagious, = self.ax.plot([], [], c='orange', alpha=0.3, linewidth=1, label='Path of Contagious')
         
         # Add text for statistics
         self.text_info = self.ax.text(0.02, 0.95, '', transform=self.ax.transAxes, bbox=dict(facecolor='white', alpha=0.5))
@@ -157,9 +181,9 @@ class Simulation:
         self.ax.set_xlabel('Position (m)')
         self.ax.set_ylabel('Position (m)')
         
-        self.path_x_con, self.path_y_con = [], []
 
     def animate(self, frame):
+        print("frame", frame)
         """Animation function called for each frame"""
         # Move all people
         for i in range(len(self.map.all_people)):
@@ -169,7 +193,6 @@ class Simulation:
         healthy_x, healthy_y = [], []
         infected_x, infected_y = [], []
         contagious_x, contagious_y = [], []
-        path_x_con, path_y_con = [], []
     
         # Collect positions by health status
         for person in self.map.all_people:
@@ -182,41 +205,165 @@ class Simulation:
                 if person.contagious:
                     contagious_x.append(person.position[0])
                     contagious_y.append(person.position[1])
-                    path_x_con.extend(person.position_history[0])
-                    path_y_con.extend(person.position_history[1])
     
         # Update scatter plots
         self.scatter_healthy.set_offsets(np.c_[healthy_x, healthy_y])
         self.scatter_infected.set_offsets(np.c_[infected_x, infected_y])
         self.scatter_contagious.set_offsets(np.c_[contagious_x, contagious_y])
     
-        # Update contagious path
-        self.lines_path_of_contagious.set_data(self.path_x_con, self.path_y_con)
-    
         # Update statistics
-        total_people = len(self.map.all_people)
-        percent_infected = (self.map.total_infected / self.map.total_number_of_people) * 100 if self.map.total_number_of_people > 0 else 0
+        total_people = self.map.total_number_of_people
+        percent_infected = round((self.map.total_infected / self.map.total_number_of_people) * 100,2)
     
         stats_text = (f"Total people: {total_people}\n"
+                      f"Total healthy: {total_people - self.map.total_infected}\n"
                       f"Total infected: {self.map.total_infected}\n"
                       f"Contagious: {self.map.total_contagious}\n"
-                      f"Infection rate: {percent_infected:.1f}%")
+                      f"Infection rate: {percent_infected}%")
         self.text_info.set_text(stats_text)
-    
-        return [self.scatter_healthy, self.scatter_infected, self.scatter_contagious, 
-            self.lines_path_of_contagious, self.text_info]
+        return [self.scatter_healthy, self.scatter_infected, self.scatter_contagious, self.text_info]
 
                 
     def run(self):
         """Run the simulation animation"""
         self.ani = animation.FuncAnimation(
             self.fig, self.animate, frames=self.time,
-            interval=50, blit=True, repeat=False
+            interval=10, blit=True, repeat=True
         )
         plt.show()
         return self.ani
 
+class Comparison:
+    def __init__(self, bounds, upper_bound_people, probably_infected=0.5, time_per_simulation=1000, max_social_distancing=3):
+        """
+        Initialize a comparison simulation with varying population sizes and social distancing values.
+        
+        Parameters:
+        - bounds: Boundaries of the map
+        - upper_bound_people: Maximum number of people to simulate
+        - probably_infected: Initial infection rate
+        - time_per_simulation: Time steps for each simulation
+        - max_social_distancing: Maximum social distancing value to test
+        """
+        self.bounds = bounds
+        self.upper_bound_people = upper_bound_people
+        self.probably_infected = probably_infected
+        self.time_per_simulation = time_per_simulation
+        self.max_social_distancing = max_social_distancing
+        self.results = []
+        
+    def run_comparison(self):
+        """Run multiple simulations with varying numbers of people and social distancing values."""
+        # Vary social distancing from 0.1 to max value in increments of 0.1
+        for social_dist in np.arange(0.1, self.max_social_distancing + 0.1, 0.1):
+            social_dist = round(social_dist, 1)  # Round to avoid floating point issues
+            print(f"\nTesting social distancing: {social_dist}")
+            
+            # Start with 10 people and increase by 10 until upper bound
+            for num_people in range(10, self.upper_bound_people + 1, 10):
+                print(f"Running simulation with {num_people} people, social distancing: {social_dist}...")
+                
+                # Create map directly to avoid animation setup
+                map_obj = Map(self.bounds, num_people, self.probably_infected)
+                map_obj.personal_space = social_dist  # Set the social distancing parameter
+                
+                # Run for specified time steps
+                for _ in range(self.time_per_simulation):
+                    for i in range(len(map_obj.all_people)):
+                        map_obj.move(i)
+                
+                # Calculate infection rate and store results
+                infection_rate = (map_obj.total_infected / map_obj.total_number_of_people) * 100
+                
+                # Store detailed results
+                result = {
+                    'social_distancing': social_dist,
+                    'num_people': num_people,
+                    'total_people': map_obj.total_number_of_people,
+                    'total_infected': map_obj.total_infected,
+                    'total_contagious': map_obj.total_contagious,
+                    'infection_rate': infection_rate,
+                    'flows_stopped': map_obj.flows_stop
+                }
+                self.results.append(result)
+            
+        return self.results
+    
+    def save_results_to_excel(self, filename="simulation_results.xlsx"):
+        """Save the results to an Excel file with initial conditions on a separate sheet."""
+        if not self.results:
+            print("No results to save. Run the comparison first.")
+            return
+        
+        # Convert results to a DataFrame
+        results_df = pd.DataFrame(self.results)
+        
+        # Create a DataFrame for initial conditions
+        initial_conditions = {
+            "Bounds": [self.bounds],
+            "Upper Bound People": [self.upper_bound_people],
+            "Probably Infected": [self.probably_infected],
+            "Time Per Simulation": [self.time_per_simulation],
+            "Max Social Distancing": [self.max_social_distancing]
+        }
+        initial_conditions_df = pd.DataFrame(initial_conditions)
+        
+        # Write to Excel
+        with pd.ExcelWriter(filename) as writer:
+            initial_conditions_df.to_excel(writer, sheet_name="Initial Conditions", index=False)
+            results_df.to_excel(writer, sheet_name="Results", index=False)
+        
+        print(f"Results saved to {filename}")
+    
+    def plot_infection_rates(self):
+        """Plot infection rates against number of people with trendlines for each social distancing value."""
+        if not self.results:
+            print("No results to plot. Run the comparison first.")
+            return
+        
+        # Convert results to a DataFrame
+        results_df = pd.DataFrame(self.results)
+        
+        # Create a figure
+        plt.figure(figsize=(12, 8))
+        
+        # Get unique social distancing values
+        social_dist_values = sorted(results_df['social_distancing'].unique())
+        
+        # Define a color map
+        colors = plt.cm.viridis(np.linspace(0, 1, len(social_dist_values)))
+        
+        # Plot data points for each social distancing value
+        for i, sd in enumerate(social_dist_values):
+            # Filter data for this social distancing value
+            sd_data = results_df[results_df['social_distancing'] == sd]
+            
+            # Plot scatter points
+            plt.plot(sd_data['num_people'], sd_data['infection_rate'], 
+                   color=colors[i], alpha=0.7, label=f'SD = {sd}m')
+        
+        # Add labels and title
+        plt.xlabel('Number of People')
+        plt.ylabel('Infection Rate (%)')
+        plt.title('Infection Rate vs. Number of People for Different Social Distancing Values')
+        plt.legend(title='Social Distancing', loc='best')
+        plt.grid(True, alpha=0.3)
+        
+        # Save the figure
+        plt.savefig('infection_rate_analysis.png', dpi=300, bbox_inches='tight')
+        print("Plot saved as 'infection_rate_analysis.png'")
+        
+        # Show the plot
+        plt.show()
+    
+    def run_full_comparison(self):
+        """Run the full comparison, save results to an Excel file, and generate plots."""
+        self.run_comparison()
+        self.save_results_to_excel()
+        self.plot_infection_rates()
+
+
 if __name__ == "__main__":
-    bounds = [150, 100]  # Increased y-bound for better visualization
-    sim = Simulation(bounds, number_of_people=20, probably_infected=0.3, time=200)
-    ani = sim.run()
+    comparison = Comparison((100, 5), 100)
+    comparison.run_full_comparison()
+  
