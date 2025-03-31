@@ -3,8 +3,7 @@ import matplotlib
 matplotlib.rcParams['animation.embed_limit'] = 10000000
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import sys
-sys.setrecursionlimit(1000000)  # Set the recursion limit to 10,000
+ # Set the recursion limit to 10,000
 import pandas as pd
 
 
@@ -318,15 +317,18 @@ class Comparison:
 
                 map = Map(self.bounds, num_people, self.contagious_rate)
                 map.personal_space = social_dist  
-                #the board move sequance
+                #the board move sequence
                 for _ in range(self.time_per_simulation):
                     for i in range(len(map.all_people)):
                         map.move(i)
 
                 # Calculate infection rate
                 infection_rate = (map.total_infected / map.total_number_of_people) * 100
+                
+                # Calculate flow rate (inverse of flows_stopped - higher is better flow)
+                flow_rate = self.time_per_simulation - map.flows_stop
+                max_possible_flow = self.time_per_simulation
 
-                #update studnent household manger to use this 'storage technique
                 result = {
                     'social_distancing': social_dist,
                     'num_people': num_people,
@@ -334,7 +336,9 @@ class Comparison:
                     'total_infected': map.total_infected,
                     'total_contagious': map.total_contagious,
                     'infection_rate': infection_rate,
-                    'flows_stopped': map.flows_stop
+                    'flows_stopped': map.flows_stop,
+                    'flow_rate': flow_rate,
+                    'flow_rate_normalized': flow_rate / max_possible_flow if max_possible_flow > 0 else 0
                 }
 
                 #stores the results 
@@ -371,7 +375,7 @@ class Comparison:
         print(f"Results saved to {filename}")
     
     def plot_infection_rates(self):
-        """Plot infection rates against number of people with trendlines for each social distancing value."""
+        """Plot infection rates against number of people with colors representing flow rates."""
         # Check if results are available
         if not self.results:
             print("No results to plot. Run the comparison first.")
@@ -382,29 +386,49 @@ class Comparison:
         plt.figure(figsize=(12, 8))
 
         social_dist_values = sorted(results_df['social_distancing'].unique())
-        # Create a color map for different social distancing values
-        colors = plt.cm.viridis(np.linspace(0, 1, len(social_dist_values)))
-        # Plot infection rates for each social distancing value
-        for i, sd in enumerate(social_dist_values):
-            
+        
+        # Create a colormap from green to red for flow rates (low to high)
+        cmap = plt.cm.RdYlGn_r  # Red-Yellow-Green colormap reversed (red is high)
+        
+        # For the legend and scatter plots
+        lines = []
+        scatter = None
+        
+        # Plot lines for each social distancing value
+        for sd in social_dist_values:
             sd_data = results_df[results_df['social_distancing'] == sd]
-
-            plt.plot(sd_data['num_people'], sd_data['infection_rate'], 
-                   color=colors[i], alpha=0.7, label=f'SD = {sd}m')
-
+            sd_data = sd_data.sort_values('num_people')
+            
+            # Plot line connecting points with the same social distancing
+            line, = plt.plot(sd_data['num_people'], sd_data['infection_rate'], '-', alpha=0.7, label=f'SD = {sd}m')
+            lines.append(line)
+            
+            # Plot scatter points colored by flow rate
+            scatter = plt.scatter(sd_data['num_people'], sd_data['infection_rate'], 
+                                 c=sd_data['flow_rate_normalized'], cmap=cmap, 
+                                 s=50, alpha=0.8)
+        
         plt.xlabel('Number of People')
         plt.ylabel('Infection Rate (%)')
-        plt.title('Effect of Social Distancing and population size for a prevalence of: {contagious_rate}')
-        plt.legend(title='Social Distancing', loc='best')
+        plt.title(f'Effect of Social Distancing and Population Size for a Prevalence of: {self.contagious_rate}')
+        
+        # Add a colorbar to show the flow rate scale
+        if scatter:
+            cbar = plt.colorbar(scatter, label='Flow Rate (normalized)')
+            cbar.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
+            cbar.set_ticklabels(['Low', '', 'Medium', '', 'High'])
+        
+        # Add a legend for social distancing values
+        plt.legend(handles=lines, title='Social Distancing', loc='best')
+        
         plt.grid(True, alpha=0.3)
 
         time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-        name = f"simulation_graph{time}.xlsx"
+        name = f"simulation_graph_{time}.png"
         plt.savefig(name, dpi=300, bbox_inches='tight')
-        print("Plot saved as 'infection_rate_analysis.png'")
+        print(f"Plot saved as '{name}'")
 
         plt.show()
-    
     def run_full_comparison(self):
         """Run the full comparison, save results to an Excel file, and generate plots."""
         self.run_comparison()
@@ -413,8 +437,8 @@ class Comparison:
 
 if __name__ == "__main__":
     #Example usage
-    run = Simulation()
-    run.time_per_simulation = 1000 #sets the time of each simulation
+    run = Comparison()
+    run.time_per_simulation = 100 #sets the time of each simulation
     run.bounds = [240, 5] #sets the bounds of the simulation where bounds are [x_max,y_max] in meters
     run.contagious_rate = 0.01 #sets the rate of contagious people in the simulation
 
