@@ -296,8 +296,6 @@ class Comparison:
         - time_per_simulation: Time steps for each simulation
         - max_social_distancing: Maximum social distancing value to test
         """
-        self.map = Map() #sets the map with the bounds and number of people
-
         self.upper_bound_people = upper_bound_people #sets the upper bound of number of people 
         self.max_social_distancing = upper_bound_social_distancing #sets the upper bound for social distancing
 
