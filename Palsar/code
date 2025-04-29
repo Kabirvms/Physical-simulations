@@ -1,0 +1,51 @@
+import numpy as np 
+import matplotlib.pyplot as plt
+
+
+def ft_coefficients(k,t,N,x_t):
+    amplitude_a_k = np.zeros(N)
+    amplitude_b_k = np.zeros(N)
+    for index in range(N-1): 
+        amplitude_a_k[index] = (1/N) 
+        amplitude_b_k[index] = (1/N) 
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def fourier_coefficient(x, k, N):
+    theta = 2 * np.pi * k / N
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+    
+    # Initialize U arrays with zeros at the end
+    U = np.zeros(N+3)
+    
+    # Compute U values recursively
+    for n in range(N-1, -1, -1):
+        U[n] = x[n] + 2 * np.cos(theta) * U[n+1] - U[n+2]
+    
+    # Compute Fourier coefficients
+    A_k = U[0] - U[1] * cos_theta
+    B_k = U[1] * sin_theta
+    
+    return A_k, B_k
+
+def compute_power_spectrum(x):
+    """
+    Compute the power spectrum for the entire frequency range.
+    
+    Args:
+        x: The time series data
+    
+    Returns:
+        power: The power spectrum array
+    """
+    N = len(x)
+    power = np.zeros(N//2)
+    
+    for k in range(1, N//2 + 1):
+        A_k, B_k = compute_fourier_coefficients(x, k, N)
+        power[k-1] = A_k**2 + B_k**2
+    
+    return power
