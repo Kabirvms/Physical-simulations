@@ -50,9 +50,39 @@ def load_pulsar_data(filepath="PULSAR.DAT"):
         # Create synthetic data if file not found for testing
         return np.zeros(256)
     
-def load_data(filename):
-    """ Loads the file into python. Note you must put the file in the same directory as this code and run from this directory not as root. """
-    data = pd.read_csv(filename, delim_whitespace=True, header=None)
-    return data
+def gen_synthetic_data(N_total=256, freq1=1200, freq2=1300, amp1=700, amp2=500, time_step=0.004,noise_level=100,background=2220):
+        
+    time_array = np.linspace(0, N_total * time_step, N_total)
 
+    intensity_array = np.zeros(N_total)
+
+    
+    # Convert Hz to angular frequency
+    angular_freq1 = 2 * np.pi * freq1
+    angular_freq2 = 2 * np.pi * freq2
+    
+
+    # Generate synthetic data
+    for i in range(N_total):
+        intensity_array[i] = np.absolute(amp1 * np.sin(angular_freq1 * time_array[i]) + amp2 * np.cos(angular_freq2 * time_array[i]))
+        intensity_array[i] += np.random.normal(background)
+        intensity_array[i] += noise_level * np.random.normal()
+    
+    return time_array , intensity_array
+
+def plot_data(time, y_axis, title="Pulsar Data", xlabel="Time (s)", ylabel="Intensity"):
+    plt.plot(time, y_axis)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.legend()
+
+
+time_array, intensity_array = gen_synthetic_data()
+power = load_pulsar_data()
+plot_data(time_array, intensity_array)
+plot_data(time_array, power, title="Fourier Transform of Pulsar Data", xlabel="Frequency (Hz)", ylabel="Power")
+plt.show()
+
+print("intensity_array", intensity_array)
 
