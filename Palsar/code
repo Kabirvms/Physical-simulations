@@ -1,174 +1,190 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
+from scipy.signal import find_peaks
 
 def compute_fourier(x_data, N_total, sample_interval=0.004):
-    """
-    Compute the Fourier transform of the given data using the method from project notes. Note outputs arrays of frequencies and power as well as A_k and B_k.
-    """
+    """Computes the Fourier transform as per the project specifications."""
 
-    #Iinitialize arrays
+    # Initialises the Fourier transform arrays
     A_k = np.zeros(N_total)
     B_k = np.zeros(N_total)
     intensity = np.zeros(N_total)
 
 
-    # Compute the Fourier transform using the method from project notes
+    # Compute the Fourier coefficients
     for k in range(1, N_total):
-        
         theta = 2 * np.pi * k / N_total
-        
         cos_theta = np.cos(theta)
         sin_theta = np.sin(theta)
-
+        
+        # Initialise the recurrence relation
         U_n = np.zeros(N_total + 2)
+        
 
+        #uses the the method of recurrence relations to calculate the Fourier coefficients
         for current_n in range(N_total - 1, -1, -1):
             U_n[current_n] = x_data[current_n] + 2 * cos_theta * U_n[current_n + 1] - U_n[current_n + 2]
         
-        #Compute the Fourier coefficients
+        #Calculate the Fourier coefficients
         A_k[k] = (U_n[0] - U_n[1] * cos_theta) / N_total
         B_k[k] = (U_n[1] * sin_theta) / N_total
 
-
-        # Compute the power spectrum    
+        # Calculates the power (intensity spectrum)
         intensity[k] = A_k[k]**2 + B_k[k]**2
 
-    # coverts to to a frequency spectrum
     frequency_array = np.arange(N_total) / (N_total * sample_interval)
-    
-
-    return intensity, A_k, B_k, frequency_array
+    return intensity, frequency_array
 
 def load_pulsar_data(filepath="PULSAR.DAT"):
-    """Load the pulsar data from the ASCII file."""
+    """Loads pulsar data from a file. Note should be 4 ms sampling interval and in arbitory units."""
     data = np.loadtxt(filepath)
     return data
+
+def gen_synthetic_data(N_total=256, time_step=0.001):
+    """Generates synthetic pulsar data see the report for details on parameters """
+    # Frequencies in Hz
+    freq1 = 173.7  # PSR J0437−4715
+    freq2 = 642.0  # PSR B1937+21
     
-def gen_synthetic_data(N_total=256, freq1=1200, freq2=1300, amp1=700, amp2=500, time_step=0.004,noise_level=100,background=2220):
-    """ Generates synthetic pulsar data with two frequencies, amplitudes, backgound and noise. """
+    # Amplitudes (relative units)
+    amp1 = 1.0   # PSR J0437−4715
+    amp2 = 0.13  # PSR B1937+21
+    
+    # Background noise parameters
+    background_mean = 20.0
+    background_std = 2.0
 
-    # Generate time array        
+    # Generate time array
     time_array = np.linspace(0, N_total * time_step, N_total)
-
-    # Generate intensity array
-    intensity_array = np.zeros(N_total)
-
-    # Generate the two angular frequencies
+    
+    # Generate the signals
     angular_freq1 = 2 * np.pi * freq1
     angular_freq2 = 2 * np.pi * freq2
-
-
-    # Generate the intensity array with noise and background
-    for i in range(N_total):
-        intensity_array[i] = np.absolute(amp1 * np.sin(angular_freq1 * time_array[i]) + amp2 * np.cos(angular_freq2 * time_array[i]))
-        intensity_array[i] += np.random.normal(background)
-        intensity_array[i] += noise_level * np.random.normal()
+    
+    # Calculate signal, add noise and background
+    signal = amp1 * np.sin(angular_freq1 * time_array) + amp2 * np.cos(angular_freq2 * time_array)
+    noise = np.random.normal(0, 1, N_total)
+    background = np.random.normal(background_mean, background_std, N_total)
+    
+    intensity_array = np.abs(signal) + noise + background
     
     return intensity_array, time_array
 
+def detect_peaks(intensity, height_fraction=0.1, distance_fraction=0.05):
+    """Detects the peaks in the intensity spectrum."""
 
-def plot_fourier_transform(data, no_data_points=256, sample_interval=0.004):
-    """Plot the Fourier transform of the given data."""
+    # Find peaks in the intensity spectrum
+    max_intensity = np.max(intensity)
+    min_height = max_intensity * height_fraction
+    min_distance = int(len(intensity) * distance_fraction)
+    peaks_indices, _ = find_peaks(intensity, height=min_height, distance=min_distance)
+    return peaks_indices
 
-    # Load the pulsar data
-    intensity, A_k, B_k, frequencies = compute_fourier(data, no_data_points, sample_interval)
+def highlight_peaks(frequencies, intensity, peaks_indices):
+    """Highlights the detected peaks in the plot."""
+    plt.scatter(frequencies[peaks_indices], intensity[peaks_indices], color='red', label='Detected Peaks', zorder=5)
+    plt.fill_between(frequencies, 0, intensity, where=np.isin(np.arange(len(intensity)), peaks_indices), alpha=0.2, color='yellow')
+    
+    for idx in peaks_indices:
+        plt.annotate(f"{frequencies[idx]:.1f} Hz", 
+                     (frequencies[idx], intensity[idx]), 
+                     textcoords="offset points", xytext=(0,10), ha='center', fontsize=8, color='blue')
+    plt.legend()
+
+def analyze_pulsar_data(data, sample_interval=0.004):
+    """
+    Analyzes the pulsar data to compute the Fourier transform and detect peaks. 
+    """
+    # find the length of the data
+    N_total = len(data)
+
+    intensity, frequencies = compute_fourier(data, N_total, sample_interval)
+
+    peaks_indices = detect_peaks(intensity)
+    peak_frequencies = frequencies[peaks_indices]
+
+    sorted_indices = np.argsort(-intensity[peaks_indices])
+    peak_frequencies = peak_frequencies[sorted_indices]
+    
+    return frequencies, intensity, peak_frequencies
+
+def plot_fourier_transform(data, sample_interval=0.004):
+    """
+    Plot the Fourier transform of the data with detected peaks highlighted.
+    
+    Args:
+        data: Time series data
+        sample_interval: Time between samples in seconds
+    """
+    no_data_points = len(data)
+    intensity, frequencies = compute_fourier(data, no_data_points, sample_interval)
     time_array = np.arange(0, no_data_points * sample_interval, sample_interval)
 
- 
-    plt.plot(time_array, data, label='Original Data')
+    print("plotting: pulsar data")
+    plt.figure(figsize=(10, 4))
+    plt.plot(time_array, data, label='Data')
     plt.title('Pulsar Data')
     plt.xlabel('Time (s)')
-    plt.ylabel('Intensity')
+    plt.ylabel('Power (Arbitrary Units)')
     plt.legend()
+    plt.tight_layout()
     plt.savefig('pulsar_data.png')
     plt.show()
 
-
-    plt.plot(frequencies[1:no_data_points//2], intensity[1:no_data_points//2], label='Power Spectrum')
+    print("plotting: power spectrum")
+    plt.figure(figsize=(10, 4))
+    plt.plot(frequencies, intensity, label='Power Spectrum')
     plt.title('Power Spectrum')
     plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Power')
+    plt.ylabel('Power (Arbitrary Units)')
     plt.legend()
+    plt.tight_layout()
     plt.savefig('power_spectrum.png')
     plt.show()
 
-
-    peak_indices = find_peaks(intensity[1:no_data_points//2], 10)
-    peak_freqs = frequencies[np.array(peak_indices) + 1]  
-
-
-    plt.plot(frequencies[1:no_data_points//2], intensity[1:no_data_points//2], label='Power Spectrum')
-    for freq in peak_freqs:
-        plt.axvline(x=freq, color='r', linestyle='--')
-    plt.title('Power Spectrum with Identified Peaks')
+    peaks_indices = detect_peaks(intensity)
+    plt.figure(figsize=(10, 4))
+    plt.plot(frequencies, intensity, label='Power Spectrum')
+    plt.title('Power Spectrum with Detected Peaks')
     plt.xlabel('Frequency (Hz)')
     plt.ylabel('Power')
-    plt.legend()
-    plt.show()
+    highlight_peaks(frequencies, intensity, peaks_indices)
+    plt.tight_layout()
     plt.savefig('power_spectrum_peaks.png')
+    plt.show()
 
-
-    
-    return frequencies, intensity, peak_freqs
-
-def find_peaks(intensity, num_peaks=5):
-    """Find the indices of the highest peaks in the power spectrum."""
-
-    peak_indices = []
-
-    for _ in range(min(num_peaks, len(intensity))):
-        if np.any(intensity):  
-            max_idx = np.argmax(intensity)
-            peak_indices.append(max_idx)
-            
-            intensity[max_idx] = 0
-    
-    return peak_indices
-plot_fourier_transform(gen_synthetic_data()[0], N_total=256, sample_interval=0.004)
-
-
-
-
-
-
-def phase_binning(data, period, num_bins=10):
+def phase_binning(data, period, num_bins=10, sample_interval=0.004):
     """
     Perform phase binning on the data using the given period.
     
-    Parameters:
-    data - The time series data
-    period - The period to use for binning (in seconds)
-    num_bins - Number of phase bins
-    
+    Args:
+        data: Time series data
+        period: Period to use for binning (in seconds)
+        num_bins: Number of phase bins
+        sample_interval: Time between samples in seconds
+        
     Returns:
-    bins - The binned data
-    bin_counts - Number of points in each bin
+        tuple: (bins, bin_counts)
     """
     N = len(data)
-    sample_interval = 0.004  # 4ms
-    
-    # Initialize bins and counts
+
     bins = np.zeros(num_bins)
     bin_counts = np.zeros(num_bins)
-    
-    # Assign data points to bins based on phase
+
     for i in range(N):
         t = i * sample_interval
-        # Calculate phase (0 to 1)
+        
         phase = (t % period) / period
-        # Determine bin index
+        
         bin_idx = int(phase * num_bins)
-        if bin_idx == num_bins:  # Handle edge case
+        if bin_idx == num_bins:  
             bin_idx = 0
-        # Add to bin
+        
         bins[bin_idx] += data[i]
         bin_counts[bin_idx] += 1
-    
-    # Normalize bins by count
-    for i in range(num_bins):
-        if bin_counts[i] > 0:
-            bins[i] /= bin_counts[i]
+
+    mask = bin_counts > 0
+    bins[mask] /= bin_counts[mask]
     
     return bins, bin_counts
 
@@ -176,35 +192,30 @@ def refine_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
     """
     Refine the period estimate using phase binning.
     
-    Parameters:
-    data - The time series data
-    period_guess - Initial guess for the period
-    delta - Range around period_guess to search (±delta)
-    steps - Number of period values to try
-    num_bins - Number of phase bins
-    
+    Args:
+        data: Time series data
+        period_guess: Initial guess for the period
+        delta: Range around period_guess to search (±delta)
+        steps: Number of period values to try
+        num_bins: Number of phase bins
+        
     Returns:
-    best_period - The refined period
-    max_variation - The maximum bin-to-bin variation for this period
+        tuple: (best_period, max_variation)
     """
     periods = np.linspace(period_guess - delta, period_guess + delta, steps)
     variations = np.zeros(steps)
     
     for i, period in enumerate(periods):
         bins, _ = phase_binning(data, period, num_bins)
-        # Measure variation (max - min)
         variations[i] = np.max(bins) - np.min(bins)
-    
-    # Find period with maximum variation
+
     best_idx = np.argmax(variations)
     best_period = periods[best_idx]
     max_variation = variations[best_idx]
-    
-    # Plot the variation vs. period
+
     plt.figure(figsize=(10, 6))
     plt.plot(periods, variations)
-    plt.axvline(x=best_period, color='r', linestyle='--', 
-                label=f'Best Period: {best_period:.6f}s')
+    plt.axvline(x=best_period, color='r', linestyle='--', label=f'Best Period: {best_period:.6f}s')
     plt.title('Period Refinement via Phase Binning')
     plt.xlabel('Period (s)')
     plt.ylabel('Bin-to-bin Variation')
@@ -213,3 +224,54 @@ def refine_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
     plt.show()
     
     return best_period, max_variation
+
+def visualize_waveform(data, period, num_bins=10):
+    """
+    Visualize the periodic waveform using the refined period.
+    
+    Args:
+        data: Time series data
+        period: The refined period
+        num_bins: Number of phase bins
+        
+    Returns:
+        array: Binned data representing the waveform
+    """
+    bins, _ = phase_binning(data, period, num_bins)
+
+    plt.figure(figsize=(10, 6))
+    plt.bar(np.arange(num_bins), bins, width=0.8)
+    plt.title(f'Pulsar Waveform (Period: {period:.6f}s)')
+    plt.xlabel('Phase Bin')
+    plt.ylabel('Average Intensity')
+    plt.xticks(np.arange(num_bins))
+    plt.grid(True, axis='y')
+    plt.show()
+    
+    return bins
+
+def main():    
+    print("Loading pulsar data...")
+    pulsar_data = load_pulsar_data()
+    print("Analyzing pulsar data...")
+    frequencies, power, peak_freqs = analyze_pulsar_data(pulsar_data)
+    plot_fourier_transform(pulsar_data)
+    if len(peak_freqs) == 0:
+        print("No significant peaks detected in the data.")
+        return
+    fundamental_freq = peak_freqs[0]  
+    period_guess = 1 / fundamental_freq
+    print(f"Initial period estimate: {period_guess:.6f}s")
+    print("Refining period estimate...")
+    refined_period, _ = refine_period(pulsar_data, period_guess)
+    print(f"Refined period: {refined_period:.6f}s")
+    print("Extracting and visualizing the waveform...")
+    visualize_waveform(pulsar_data, refined_period)
+    print("\nAnalysis Summary:")
+    print(f"Data length: {len(pulsar_data)} points")
+    print(f"Sampling interval: 4ms")
+    print(f"Fundamental frequency: {fundamental_freq:.2f} Hz")
+    print(f"Refined period: {refined_period:.6f}s")
+
+if __name__ == "__main__":
+    main()
