@@ -1,6 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
+def load_pulsar_data(filename):
+    """Loads pulsar data from a file. Note should be 4 ms sampling interval and in arbitory units."""
+    data = np.loadtxt(filename)
+    return data
 
 def compute_fourier(x_data, N_total, sample_interval=0.004):
     """Computes the Fourier transform as per the project specifications."""
@@ -153,42 +157,41 @@ def plot_fourier_transform(data, sample_interval=0.004):
     plt.savefig('power_spectrum_peaks.png')
     plt.show()
 
-def phase_binning(data, period, num_bins=10, sample_interval=0.004):
+def phase_binning(data, period, number_of_bins=10, sample_interval=0.004):
     """
     Perform phase binning on the data using the given period.
-    
-    Args:
-        data: Time series data
-        period: Period to use for binning (in seconds)
-        num_bins: Number of phase bins
-        sample_interval: Time between samples in seconds
-        
-    Returns:
-        tuple: (bins, bin_counts)
     """
-    N = len(data)
 
-    bins = np.zeros(num_bins)
-    bin_counts = np.zeros(num_bins)
+    #Initiatises the binning arrays
+    total_length = len(data)
 
-    for i in range(N):
-        t = i * sample_interval
-        
-        phase = (t % period) / period
-        
-        bin_idx = int(phase * num_bins)
-        if bin_idx == num_bins:  
-            bin_idx = 0
-        
-        bins[bin_idx] += data[i]
-        bin_counts[bin_idx] += 1
+    bins = np.zeros(number_of_bins)   
+    bin_counts = np.zeros(number_of_bins)
 
+    #calculates for each data point
+    for index in range(total_length):
+        #finds the "absolute" time of the data point
+        time = index * sample_interval
+        
+        #finds the the bin positon of the data
+        phase = (time % period) / period
+        
+        #finds the bin index
+        bin_index = int(phase * number_of_bins)
+        if bin_index == number_of_bins:  
+            bin_index = 0
+        
+        #adds the data point to the bin
+        bins[bin_index] += data[index]
+        bin_counts[bin_index] += 1
+
+    #Normalises the bins
     mask = bin_counts > 0
     bins[mask] /= bin_counts[mask]
     
     return bins, bin_counts
 
-def refine_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
+def find_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
     """
     Refine the period estimate using phase binning.
     
@@ -202,16 +205,20 @@ def refine_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
     Returns:
         tuple: (best_period, max_variation)
     """
+
+    #generates the search range
     periods = np.linspace(period_guess - delta, period_guess + delta, steps)
+
+    #Initialises 
     variations = np.zeros(steps)
     
-    for i, period in enumerate(periods):
+    for index,period in enumerate(periods):
         bins, _ = phase_binning(data, period, num_bins)
-        variations[i] = np.max(bins) - np.min(bins)
+        variations[index] = np.max(bins) - np.min(bins)
 
-    best_idx = np.argmax(variations)
-    best_period = periods[best_idx]
-    max_variation = variations[best_idx]
+    best_index = np.argmax(variations)
+    best_period = periods[best_index]
+    max_variation = variations[best_index]
 
     plt.figure(figsize=(10, 6))
     plt.plot(periods, variations)
@@ -222,37 +229,38 @@ def refine_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
     plt.legend()
     plt.grid(True)
     plt.show()
+    plt.savefig('period_refinement.png')
+    print("---------------------------------------")
+    print("the best period is: ", best_period)
+    print("the max variation is: ", max_variation)
+    print("the best index is: ", best_index)
+    print("the period is: ", periods[best_index])
+    print("the variations are: ", variations)
+    print("the periods are: ", periods)
+    print("the bins are: ", bins)
     
     return best_period, max_variation
 
-def visualize_waveform(data, period, num_bins=10):
+def visualize_waveform(data, period, number_of_bins=10):
     """
     Visualize the periodic waveform using the refined period.
-    
-    Args:
-        data: Time series data
-        period: The refined period
-        num_bins: Number of phase bins
-        
-    Returns:
-        array: Binned data representing the waveform
     """
-    bins, _ = phase_binning(data, period, num_bins)
+    bins, bin_counts = phase_binning(data, period, number_of_bins)
 
     plt.figure(figsize=(10, 6))
-    plt.bar(np.arange(num_bins), bins, width=0.8)
+    plt.bar(np.arange(number_of_bins), bins, width=0.8)
     plt.title(f'Pulsar Waveform (Period: {period:.6f}s)')
     plt.xlabel('Phase Bin')
     plt.ylabel('Average Intensity')
-    plt.xticks(np.arange(num_bins))
+    plt.xticks(np.arange(number_of_bins))
     plt.grid(True, axis='y')
     plt.show()
     
-    return bins
+    return bins, bin_counts
 
 def main():    
     print("Loading pulsar data...")
-    pulsar_data = load_pulsar_data()
+    pulsar_data = load_pulsar_data("pulsar.dat")
     print("Analyzing pulsar data...")
     frequencies, power, peak_freqs = analyze_pulsar_data(pulsar_data)
     plot_fourier_transform(pulsar_data)
@@ -263,15 +271,15 @@ def main():
     period_guess = 1 / fundamental_freq
     print(f"Initial period estimate: {period_guess:.6f}s")
     print("Refining period estimate...")
-    refined_period, _ = refine_period(pulsar_data, period_guess)
-    print(f"Refined period: {refined_period:.6f}s")
+    best_period, _ = find_period(pulsar_data, period_guess)
+    print(f"Refined period: {best_period:.6f}s")
     print("Extracting and visualizing the waveform...")
-    visualize_waveform(pulsar_data, refined_period)
+    visualize_waveform(pulsar_data, best_period)
     print("\nAnalysis Summary:")
     print(f"Data length: {len(pulsar_data)} points")
     print(f"Sampling interval: 4ms")
     print(f"Fundamental frequency: {fundamental_freq:.2f} Hz")
-    print(f"Refined period: {refined_period:.6f}s")
+    print(f"Refined period: {best_period:.6f}s")
 
 if __name__ == "__main__":
     main()
