@@ -1,225 +1,160 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
+
 def load_pulsar_data(filename):
-    """Loads pulsar data from a file. Note should be 4 ms sampling interval and in arbitory units."""
-    data = np.loadtxt(filename)
-    return data
+    """Loads pulsar data from a file (ASCII, one value per line)."""
+    return np.loadtxt(filename)
 
 def compute_fourier(x_data, N_total, sample_interval=0.004):
-    """Computes the Fourier transform as per the project specifications."""
-
-    # Initialises the Fourier transform arrays
+    """Computes the Fourier transform using recurrence relations."""
+    # Initialize arrays
     A_k = np.zeros(N_total)
     B_k = np.zeros(N_total)
     intensity = np.zeros(N_total)
 
-
-    # Compute the Fourier coefficients
+    # Compute Fourier coefficients using recurrence relations
     for k in range(1, N_total):
         theta = 2 * np.pi * k / N_total
         cos_theta = np.cos(theta)
         sin_theta = np.sin(theta)
-        
-        # Initialise the recurrence relation
         U_n = np.zeros(N_total + 2)
-        
 
-        #uses the the method of recurrence relations to calculate the Fourier coefficients
-        for current_n in range(N_total - 1, -1, -1):
-            U_n[current_n] = x_data[current_n] + 2 * cos_theta * U_n[current_n + 1] - U_n[current_n + 2]
+
+        for n in range(N_total - 1, -1, -1):
+            U_n[n] = x_data[n] + 2 * cos_theta * U_n[n + 1] - U_n[n + 2]
         
-        #Calculate the Fourier coefficients
+        # Compute and normalise the coefficients
         A_k[k] = (U_n[0] - U_n[1] * cos_theta) / N_total
         B_k[k] = (U_n[1] * sin_theta) / N_total
-
-        # Calculates the power (intensity spectrum)
         intensity[k] = A_k[k]**2 + B_k[k]**2
-
     frequency_array = np.arange(N_total) / (N_total * sample_interval)
     return intensity, frequency_array
 
-def load_pulsar_data(filepath="PULSAR.DAT"):
-    """Loads pulsar data from a file. Note should be 4 ms sampling interval and in arbitory units."""
-    data = np.loadtxt(filepath)
-    return data
-
-def gen_synthetic_data(N_total=256, time_step=0.001):
-    """Generates synthetic pulsar data see the report for details on parameters """
-    # Frequencies in Hz
-    freq1 = 173.7  # PSR J0437−4715
-    freq2 = 642.0  # PSR B1937+21
-    
-    # Amplitudes (relative units)
-    amp1 = 1.0   # PSR J0437−4715
-    amp2 = 0.13  # PSR B1937+21
-    
-    # Background noise parameters
-    background_mean = 20.0
-    background_std = 2.0
-
-    # Generate time array
-    time_array = np.linspace(0, N_total * time_step, N_total)
-    
-    # Generate the signals
-    angular_freq1 = 2 * np.pi * freq1
-    angular_freq2 = 2 * np.pi * freq2
-    
-    # Calculate signal, add noise and background
-    signal = amp1 * np.sin(angular_freq1 * time_array) + amp2 * np.cos(angular_freq2 * time_array)
-    noise = np.random.normal(0, 1, N_total)
-    background = np.random.normal(background_mean, background_std, N_total)
-    
-    intensity_array = np.abs(signal) + noise + background
-    
-    return intensity_array, time_array
-
 def detect_peaks(intensity, height_fraction=0.1, distance_fraction=0.05):
-    """Detects the peaks in the intensity spectrum."""
-
-    # Find peaks in the intensity spectrum
+    """Detects peaks in the intensity spectrum."""
+    # Use scipy's find_peaks to detect peaks
     max_intensity = np.max(intensity)
     min_height = max_intensity * height_fraction
     min_distance = int(len(intensity) * distance_fraction)
     peaks_indices, _ = find_peaks(intensity, height=min_height, distance=min_distance)
     return peaks_indices
 
-def highlight_peaks(frequencies, intensity, peaks_indices):
-    """Highlights the detected peaks in the plot."""
-    plt.scatter(frequencies[peaks_indices], intensity[peaks_indices], color='red', label='Detected Peaks', zorder=5)
-    plt.fill_between(frequencies, 0, intensity, where=np.isin(np.arange(len(intensity)), peaks_indices), alpha=0.2, color='yellow')
-    
-    for idx in peaks_indices:
-        plt.annotate(f"{frequencies[idx]:.1f} Hz", 
-                     (frequencies[idx], intensity[idx]), 
-                     textcoords="offset points", xytext=(0,10), ha='center', fontsize=8, color='blue')
-    plt.legend()
+def gen_synthetic_data(N_total=256, time_step=0.001):
+    """Generates synthetic pulsar data see the report for details on parameters """
+    # Frequencies in Hz
+    freq1 = 173.7  # PSR J0437−4715
+    freq2 =  230 
 
-def analyze_pulsar_data(data, sample_interval=0.004):
-    """
-    Analyzes the pulsar data to compute the Fourier transform and detect peaks. 
-    """
-    # find the length of the data
-    N_total = len(data)
+    # Amplitudes (relative units)
+    amp1 = 1.0   # PSR J0437−4715
+    amp2 = 0.13  # PSR B1937+21
 
-    intensity, frequencies = compute_fourier(data, N_total, sample_interval)
+    # Background noise parameters
+    background_mean = 20.0
+    background_std = 2.0
 
-    peaks_indices = detect_peaks(intensity)
-    peak_frequencies = frequencies[peaks_indices]
+    # Generate time array
+    time_array = np.linspace(0, N_total * time_step, N_total)
 
-    sorted_indices = np.argsort(-intensity[peaks_indices])
-    peak_frequencies = peak_frequencies[sorted_indices]
-    
-    return frequencies, intensity, peak_frequencies
+    # Generate the signals
+    angular_freq1 = 2 * np.pi * freq1
+    angular_freq2 = 2 * np.pi * freq2
 
-def plot_fourier_transform(data, sample_interval=0.004):
-    """
-    Plot the Fourier transform of the data with detected peaks highlighted.
-    
-    Args:
-        data: Time series data
-        sample_interval: Time between samples in seconds
-    """
-    no_data_points = len(data)
-    intensity, frequencies = compute_fourier(data, no_data_points, sample_interval)
-    time_array = np.arange(0, no_data_points * sample_interval, sample_interval)
+    # Calculate signal, add noise and background
+    signal = amp1 * np.sin(angular_freq1 * time_array) + amp2 * np.cos(angular_freq2 * time_array)
+    noise = np.random.normal(0, 1, N_total)
+    background = np.random.normal(background_mean, background_std, N_total)
+    intensity_array = np.abs(signal) + noise + background
+    return intensity_array, time_array
 
-    print("plotting: pulsar data")
-    plt.figure(figsize=(10, 4))
-    plt.plot(time_array, data, label='Data')
-    plt.title('Pulsar Data')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Power (Arbitrary Units)')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig('pulsar_data.png')
-    plt.show()
+def estimate_frequency_uncertainty(frequencies, intensity, peak_index):
+    """Estimate frequency uncertainty as FWHM of the peak."""
 
-    print("plotting: power spectrum")
-    plt.figure(figsize=(10, 4))
-    plt.plot(frequencies, intensity, label='Power Spectrum')
-    plt.title('Power Spectrum')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Power (Arbitrary Units)')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig('power_spectrum.png')
-    plt.show()
+    # Find the peak frequency and its FWHM
 
-    peaks_indices = detect_peaks(intensity)
-    plt.figure(figsize=(10, 4))
-    plt.plot(frequencies, intensity, label='Power Spectrum')
-    plt.title('Power Spectrum with Detected Peaks')
-    plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Power')
-    highlight_peaks(frequencies, intensity, peaks_indices)
-    plt.tight_layout()
-    plt.savefig('power_spectrum_peaks.png')
-    plt.show()
+    half_max = intensity[peak_index] / 2
+    left = peak_index
+
+
+    while left > 0 and intensity[left] > half_max:
+        left -= 1
+    right = peak_index
+    while right < len(intensity) - 1 and intensity[right] > half_max:
+        right += 1
+    fwhm = frequencies[right] - frequencies[left]
+
+    # Estimate frequency uncertainty as half of the FWHM
+    freq_uncertainty = fwhm / 2
+    return freq_uncertainty
+
+def calculate_snr(intensity, peak_index, noise_width=10):
+    """Estimate SNR by comparing peak height to local noise."""
+    peak_height = intensity[peak_index]
+    left = max(0, peak_index - noise_width)
+    right = min(len(intensity), peak_index + noise_width)
+    noise = np.concatenate([intensity[left:peak_index], intensity[peak_index+1:right]])
+    noise_mean = np.mean(noise)
+    noise_std = np.std(noise)
+    snr = (peak_height - noise_mean) / noise_std
+    return snr
+
+def summarize_peaks(frequencies, intensity, peaks_indices):
+    print(f"{'Peak #':<6} {'Frequency (Hz)':<15} {'Uncertainty (Hz)':<18} {'SNR':<8}")
+    for i, index in enumerate(peaks_indices):
+        freq_unc = estimate_frequency_uncertainty(frequencies, intensity, index)
+        snr = calculate_snr(intensity, index)
+        print(f"{i+1:<6} {frequencies[index]:<15.3f} {freq_unc:<18.3e} {snr:<8.2f}")
 
 def phase_binning(data, period, number_of_bins=10, sample_interval=0.004):
-    """
-    Perform phase binning on the data using the given period.
-    """
-
-    #Initiatises the binning arrays
+    """Perform phase binning on the data using the given period."""
     total_length = len(data)
-
-    bins = np.zeros(number_of_bins)   
+    bins = np.zeros(number_of_bins)
     bin_counts = np.zeros(number_of_bins)
-
-    #calculates for each data point
     for index in range(total_length):
-        #finds the "absolute" time of the data point
         time = index * sample_interval
-        
-        #finds the the bin positon of the data
         phase = (time % period) / period
-        
-        #finds the bin index
         bin_index = int(phase * number_of_bins)
-        if bin_index == number_of_bins:  
+        if bin_index == number_of_bins:
             bin_index = 0
-        
-        #adds the data point to the bin
         bins[bin_index] += data[index]
         bin_counts[bin_index] += 1
-
-    #Normalises the bins
     mask = bin_counts > 0
     bins[mask] /= bin_counts[mask]
-    
     return bins, bin_counts
 
-def find_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
-    """
-    Refine the period estimate using phase binning.
-    
-    Args:
-        data: Time series data
-        period_guess: Initial guess for the period
-        delta: Range around period_guess to search (±delta)
-        steps: Number of period values to try
-        num_bins: Number of phase bins
-        
-    Returns:
-        tuple: (best_period, max_variation)
-    """
+def bootstrap_phase_binning(data, period, number_of_bins=10, sample_interval=0.004, n_bootstrap=500):
+    """Estimate uncertainty in phase-binned bins using bootstrap resampling."""
+    all_bins = []
+    for _ in range(n_bootstrap):
+        resampled = np.random.choice(data, size=len(data), replace=True)
+        bins, _ = phase_binning(resampled, period, number_of_bins, sample_interval)
+        all_bins.append(bins)
+    all_bins = np.array(all_bins)
+    mean_bins = np.mean(all_bins, axis=0)
+    std_bins = np.std(all_bins, axis=0)
+    return mean_bins, std_bins
 
-    #generates the search range
+def find_period(data, period_guess, delta=0.001, steps=100, num_bins=10, sample_interval=0.004):
+    """Refine the period estimate using phase binning."""
     periods = np.linspace(period_guess - delta, period_guess + delta, steps)
-
-    #Initialises 
     variations = np.zeros(steps)
-    
-    for index,period in enumerate(periods):
-        bins, _ = phase_binning(data, period, num_bins)
+    for index, period in enumerate(periods):
+        bins, _ = phase_binning(data, period, num_bins, sample_interval)
         variations[index] = np.max(bins) - np.min(bins)
-
     best_index = np.argmax(variations)
     best_period = periods[best_index]
     max_variation = variations[best_index]
-
+    # Estimate period uncertainty as FWHM of the variation curve
+    half_max = max_variation / 2
+    left = best_index
+    while left > 0 and variations[left] < half_max:
+        left -= 1
+    right = best_index
+    while right < len(variations) - 1 and variations[right] < half_max:
+        right += 1
+    fwhm = periods[right] - periods[left]
+    period_uncertainty = fwhm / 2
     plt.figure(figsize=(10, 6))
     plt.plot(periods, variations)
     plt.axvline(x=best_period, color='r', linestyle='--', label=f'Best Period: {best_period:.6f}s')
@@ -228,58 +163,66 @@ def find_period(data, period_guess, delta=0.001, steps=100, num_bins=10):
     plt.ylabel('Bin-to-bin Variation')
     plt.legend()
     plt.grid(True)
-    plt.show()
+    plt.tight_layout()
     plt.savefig('period_refinement.png')
-    print("---------------------------------------")
-    print("the best period is: ", best_period)
-    print("the max variation is: ", max_variation)
-    print("the best index is: ", best_index)
-    print("the period is: ", periods[best_index])
-    print("the variations are: ", variations)
-    print("the periods are: ", periods)
-    print("the bins are: ", bins)
-    
-    return best_period, max_variation
+    plt.show()
+    print(f"Best period: {best_period:.6f} s ± {period_uncertainty:.2e} s")
+    return best_period, period_uncertainty
 
-def visualize_waveform(data, period, number_of_bins=10):
-    """
-    Visualize the periodic waveform using the refined period.
-    """
-    bins, bin_counts = phase_binning(data, period, number_of_bins)
-
+def plot_waveform_error(data, period, number_of_bins=10, sample_interval=0.004):
+    mean_bins, std_bins = bootstrap_phase_binning(data, period, number_of_bins, sample_interval)
     plt.figure(figsize=(10, 6))
-    plt.bar(np.arange(number_of_bins), bins, width=0.8)
+    plt.bar(np.arange(number_of_bins), mean_bins, yerr=std_bins, capsize=5)
     plt.title(f'Pulsar Waveform (Period: {period:.6f}s)')
     plt.xlabel('Phase Bin')
     plt.ylabel('Average Intensity')
     plt.xticks(np.arange(number_of_bins))
     plt.grid(True, axis='y')
+    plt.tight_layout()
+    plt.savefig('pulsar_waveform_with_error.png')
     plt.show()
-    
-    return bins, bin_counts
+    return mean_bins, std_bins
 
-def main():    
-    print("Loading pulsar data...")
-    pulsar_data = load_pulsar_data("pulsar.dat")
-    print("Analyzing pulsar data...")
-    frequencies, power, peak_freqs = analyze_pulsar_data(pulsar_data)
-    plot_fourier_transform(pulsar_data)
-    if len(peak_freqs) == 0:
-        print("No significant peaks detected in the data.")
-        return
-    fundamental_freq = peak_freqs[0]  
+def plot_fourier_transform(data, sample_interval=0.004):
+    no_data_points = len(data)
+    intensity, frequencies = compute_fourier(data, no_data_points, sample_interval)
+    plt.figure(figsize=(10, 4))
+    plt.plot(frequencies, intensity, label='Power Spectrum')
+    plt.title('Power Spectrum')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Power (Arbitrary Units)')
+    plt.legend()
+    plt.savefig('power_spectrum.png')
+    plt.show()
+    peaks_indices = detect_peaks(intensity)
+    plt.figure(figsize=(10, 4))
+    plt.plot(frequencies, intensity, label='Power Spectrum')
+    plt.scatter(frequencies[peaks_indices], intensity[peaks_indices], color='red', label='Detected Peaks', zorder=5)
+    plt.title('Power Spectrum with Detected Peaks')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Power')
+    plt.legend()
+
+    plt.savefig('power_spectrum_peaks.png')
+    plt.show()
+    return frequencies, intensity, peaks_indices
+
+def main(pulsar_data):
+    frequencies, intensity, peaks_indices = plot_fourier_transform(pulsar_data)
+    summarize_peaks(frequencies, intensity, peaks_indices)
+    fundamental_freq = frequencies[peaks_indices[0]]
     period_guess = 1 / fundamental_freq
-    print(f"Initial period estimate: {period_guess:.6f}s")
-    print("Refining period estimate...")
-    best_period, _ = find_period(pulsar_data, period_guess)
-    print(f"Refined period: {best_period:.6f}s")
-    print("Extracting and visualizing the waveform...")
-    visualize_waveform(pulsar_data, best_period)
-    print("\nAnalysis Summary:")
-    print(f"Data length: {len(pulsar_data)} points")
-    print(f"Sampling interval: 4ms")
-    print(f"Fundamental frequency: {fundamental_freq:.2f} Hz")
-    print(f"Refined period: {best_period:.6f}s")
+    best_period, period_uncertainty = find_period(pulsar_data, period_guess)
+    plot_waveform_error(pulsar_data, best_period)
 
 if __name__ == "__main__":
-    main()
+    print("Generating synthetic pulsar data...")
+    data = gen_synthetic_data(N_total=256, time_step=0.004)[0]
+    print("Running analysis on the synthetic data...")
+    main(data)
+
+    print("Analysing real data")
+    pulsar_data = load_pulsar_data('pulsar_data.txt')
+    main(pulsar_data)
+    print("End of script.")
+    
