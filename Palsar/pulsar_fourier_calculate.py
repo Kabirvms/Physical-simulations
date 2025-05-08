@@ -41,10 +41,13 @@ def detect_peaks(intensity, height_fraction=0.1, distance_fraction=0.05):
     return peaks_indices
 
 def gen_synthetic_data(N_total=256, time_step=0.001):
+
+
+
     """Generates synthetic pulsar data see the report for details on parameters """
     # Frequencies in Hz
     freq1 = 173.7  # PSR J0437−4715
-    freq2 =  230 
+    freq2 = 642.0  # PSR B1937+21
 
     # Amplitudes (relative units)
     amp1 = 1.0   # PSR J0437−4715
@@ -66,6 +69,12 @@ def gen_synthetic_data(N_total=256, time_step=0.001):
     noise = np.random.normal(0, 1, N_total)
     background = np.random.normal(background_mean, background_std, N_total)
     intensity_array = np.abs(signal) + noise + background
+
+    plt.plot(time_array, intensity_array)
+    plt.title('Synthetic Pulsar Data')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Intensity (arbitrary units)')
+    plt.savefig('synthetic_pulsar_data.png')
     return intensity_array, time_array
 
 def estimate_frequency_uncertainty(frequencies, intensity, peak_index):
