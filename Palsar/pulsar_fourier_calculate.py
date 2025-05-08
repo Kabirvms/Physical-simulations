@@ -46,15 +46,15 @@ def gen_synthetic_data(N_total=256, time_step=0.001):
 
     """Generates synthetic pulsar data see the report for details on parameters """
     # Frequencies in Hz
-    freq1 = 173.7  # PSR J0437−4715
-    freq2 = 642.0  # PSR B1937+21
+    freq1 = 100  # PSR J0437−4715
+    freq2 = 130 # PSR B1937+21
 
     # Amplitudes (relative units)
-    amp1 = 1.0   # PSR J0437−4715
-    amp2 = 0.13  # PSR B1937+21
+    amp1 = 1.3   # PSR J0437−4715
+    amp2 = 1.0  # PSR B1937+21
 
     # Background noise parameters
-    background_mean = 20.0
+    background_mean = 10.0
     background_std = 2.0
 
     # Generate time array
@@ -65,7 +65,7 @@ def gen_synthetic_data(N_total=256, time_step=0.001):
     angular_freq2 = 2 * np.pi * freq2
 
     # Calculate signal, add noise and background
-    signal = amp1 * np.sin(angular_freq1 * time_array) + amp2 * np.cos(angular_freq2 * time_array)
+    signal = abs(amp1 * np.sin(angular_freq1 * time_array)) + abs(amp2 * np.cos(angular_freq2 * time_array))
     noise = np.random.normal(0, 1, N_total)
     background = np.random.normal(background_mean, background_std, N_total)
     intensity_array = np.abs(signal) + noise + background
@@ -75,6 +75,7 @@ def gen_synthetic_data(N_total=256, time_step=0.001):
     plt.xlabel('Time (s)')
     plt.ylabel('Intensity (arbitrary units)')
     plt.savefig('synthetic_pulsar_data.png')
+    plt.show()
     return intensity_array, time_array
 
 def estimate_frequency_uncertainty(frequencies, intensity, peak_index):
@@ -110,10 +111,14 @@ def calculate_snr(intensity, peak_index, noise_width=10):
 
 def summarize_peaks(frequencies, intensity, peaks_indices):
     print(f"{'Peak #':<6} {'Frequency (Hz)':<15} {'Uncertainty (Hz)':<18} {'SNR':<8}")
+    snr_array = np.zeros(len(peaks_indices))
     for i, index in enumerate(peaks_indices):
         freq_unc = estimate_frequency_uncertainty(frequencies, intensity, index)
         snr = calculate_snr(intensity, index)
+        snr_array[i] = snr
+
         print(f"{i+1:<6} {frequencies[index]:<15.3f} {freq_unc:<18.3e} {snr:<8.2f}")
+    print(f"Average SNR: {np.mean(snr_array):.2f} ± {np.std(snr_array):.2f}")
 
 def phase_binning(data, period, number_of_bins=10, sample_interval=0.004):
     """Perform phase binning on the data using the given period."""
@@ -132,19 +137,8 @@ def phase_binning(data, period, number_of_bins=10, sample_interval=0.004):
     bins[mask] /= bin_counts[mask]
     return bins, bin_counts
 
-def bootstrap_phase_binning(data, period, number_of_bins=10, sample_interval=0.004, n_bootstrap=500):
-    """Estimate uncertainty in phase-binned bins using bootstrap resampling."""
-    all_bins = []
-    for _ in range(n_bootstrap):
-        resampled = np.random.choice(data, size=len(data), replace=True)
-        bins, _ = phase_binning(resampled, period, number_of_bins, sample_interval)
-        all_bins.append(bins)
-    all_bins = np.array(all_bins)
-    mean_bins = np.mean(all_bins, axis=0)
-    std_bins = np.std(all_bins, axis=0)
-    return mean_bins, std_bins
 
-def find_period(data, period_guess, delta=0.001, steps=100, num_bins=10, sample_interval=0.004):
+def find_period(data, period_guess, delta=0.028, steps=100, num_bins=100, sample_interval=0.004):
     """Refine the period estimate using phase binning."""
     periods = np.linspace(period_guess - delta, period_guess + delta, steps)
     variations = np.zeros(steps)
@@ -166,7 +160,7 @@ def find_period(data, period_guess, delta=0.001, steps=100, num_bins=10, sample_
     period_uncertainty = fwhm / 2
     plt.figure(figsize=(10, 6))
     plt.plot(periods, variations)
-    plt.axvline(x=best_period, color='r', linestyle='--', label=f'Best Period: {best_period:.6f}s')
+    plt.axvline(x=best_period, color='r', linestyle='--', label=f'Best Period: {best_period:.6f}s',alpha=0.5)
     plt.title('Period Refinement via Phase Binning')
     plt.xlabel('Period (s)')
     plt.ylabel('Bin-to-bin Variation')
@@ -178,19 +172,19 @@ def find_period(data, period_guess, delta=0.001, steps=100, num_bins=10, sample_
     print(f"Best period: {best_period:.6f} s ± {period_uncertainty:.2e} s")
     return best_period, period_uncertainty
 
-def plot_waveform_error(data, period, number_of_bins=10, sample_interval=0.004):
-    mean_bins, std_bins = bootstrap_phase_binning(data, period, number_of_bins, sample_interval)
-    plt.figure(figsize=(10, 6))
-    plt.bar(np.arange(number_of_bins), mean_bins, yerr=std_bins, capsize=5)
-    plt.title(f'Pulsar Waveform (Period: {period:.6f}s)')
-    plt.xlabel('Phase Bin')
-    plt.ylabel('Average Intensity')
-    plt.xticks(np.arange(number_of_bins))
-    plt.grid(True, axis='y')
-    plt.tight_layout()
-    plt.savefig('pulsar_waveform_with_error.png')
+def plot_bin(data, period, number_of_bins=10, sample_interval=0.004):
+    bins, count = phase_binning(data, period, number_of_bins, sample_interval)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(np.arange(len(bins)), bins, capsize=5)
+    ax.set_title(f'Pulsar Waveform (Period: {period:.6f}s)')
+    ax.set_xlabel('Phase Bin')
+    ax.set_ylabel('Average Intensity')
+    ax.set_xticks(np.arange(number_of_bins))
+    ax.grid(True, axis='y')
+    fig.tight_layout()
+    fig.savefig('pulsar_waveform_with_error.png')
     plt.show()
-    return mean_bins, std_bins
+    return
 
 def plot_fourier_transform(data, sample_interval=0.004):
     no_data_points = len(data)
@@ -222,16 +216,22 @@ def main(pulsar_data):
     fundamental_freq = frequencies[peaks_indices[0]]
     period_guess = 1 / fundamental_freq
     best_period, period_uncertainty = find_period(pulsar_data, period_guess)
-    plot_waveform_error(pulsar_data, best_period)
+    plot_bin(pulsar_data, best_period)
 
 if __name__ == "__main__":
-    print("Generating synthetic pulsar data...")
-    data = gen_synthetic_data(N_total=256, time_step=0.004)[0]
-    print("Running analysis on the synthetic data...")
-    main(data)
+    #print("Generating synthetic pulsar data...")
+    #print("Running analysis on the synthetic data...")
+    #data = gen_synthetic_data(N_total=256, time_step=0.004)[0]
+    #main(data)
 
     print("Analysing real data")
-    pulsar_data = load_pulsar_data('pulsar_data.txt')
+    pulsar_data = load_pulsar_data('pulsar.dat')
+    plt.plot(np.linspace(0, len(pulsar_data)*0.004, len(pulsar_data)), pulsar_data)
+    plt.title('Pulsar Data')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Intensity (arbitrary units)')
+    plt.savefig('pulsar_data_plot.png')
+    plt.show()
     main(pulsar_data)
     print("End of script.")
     
